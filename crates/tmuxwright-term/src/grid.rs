@@ -373,3 +373,108 @@ impl Perform for Performer<'_> {
     fn unhook(&mut self) {}
     fn osc_dispatch(&mut self, _params: &[&[u8]], _bell_terminated: bool) {}
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn plain_text_fills_top_left() {
+        let mut p = Parser::new(10, 3);
+        p.feed(b"abc");
+        let g = p.grid();
+        assert_eq!(g.cursor(), (3, 0));
+        assert_eq!(g.row_text(0), "abc");
+        assert_eq!(g.row_text(1), "");
+    }
+
+    #[test]
+    fn cr_lf_wraps_to_next_row() {
+        let mut p = Parser::new(10, 3);
+        p.feed(b"ab\r\ncd");
+        let g = p.grid();
+        assert_eq!(g.row_text(0), "ab");
+        assert_eq!(g.row_text(1), "cd");
+        assert_eq!(g.cursor(), (2, 1));
+    }
+
+    #[test]
+    fn line_wrap_advances_cursor() {
+        let mut p = Parser::new(3, 3);
+        p.feed(b"abcd");
+        let g = p.grid();
+        assert_eq!(g.row_text(0), "abc");
+        assert_eq!(g.row_text(1), "d");
+    }
+
+    #[test]
+    fn scroll_up_on_overflow() {
+        let mut p = Parser::new(5, 2);
+        p.feed(b"one\r\ntwo\r\nthree");
+        let g = p.grid();
+        assert_eq!(g.row_text(0), "two");
+        assert_eq!(g.row_text(1), "three");
+    }
+
+    #[test]
+    fn sgr_bold_underline_and_red() {
+        let mut p = Parser::new(10, 1);
+        p.feed(b"\x1b[1;4;31mX\x1b[0mY");
+        let g = p.grid();
+        let x = g.cell(0, 0).unwrap();
+        assert!(x.attrs.bold);
+        assert!(x.attrs.underline);
+        assert_eq!(x.attrs.fg, Color::Indexed(1));
+        let y = g.cell(1, 0).unwrap();
+        assert!(!y.attrs.bold);
+        assert_eq!(y.attrs.fg, Color::Default);
+    }
+
+    #[test]
+    fn cursor_position_is_one_based() {
+        let mut p = Parser::new(10, 4);
+        p.feed(b"\x1b[2;3Hok");
+        let g = p.grid();
+        assert_eq!(g.row_text(1), "  ok");
+    }
+
+    #[test]
+    fn erase_in_line_clears_to_eol() {
+        let mut p = Parser::new(10, 1);
+        p.feed(b"abcdef\x1b[4G\x1b[K");
+        let g = p.grid();
+        assert_eq!(g.row_text(0), "abc");
+    }
+
+    #[test]
+    fn erase_in_display_2_clears_all() {
+        let mut p = Parser::new(5, 2);
+        p.feed(b"hi\r\nyo\x1b[2J");
+        let g = p.grid();
+        assert_eq!(g.row_text(0), "");
+        assert_eq!(g.row_text(1), "");
+    }
+
+    #[test]
+    fn bright_colors_map_to_8_15() {
+        let mut p = Parser::new(5, 1);
+        p.feed(b"\x1b[92mG");
+        let g = p.grid();
+        assert_eq!(g.cell(0, 0).unwrap().attrs.fg, Color::Indexed(10));
+    }
+
+    #[test]
+    fn backspace_moves_cursor_left() {
+        let mut p = Parser::new(5, 1);
+        p.feed(b"ab\x08");
+        let g = p.grid();
+        assert_eq!(g.cursor(), (1, 0));
+    }
+
+    #[test]
+    fn to_text_joins_rows_with_newlines() {
+        let mut p = Parser::new(5, 3);
+        p.feed(b"ab\r\ncd");
+        assert_eq!(p.grid().to_text(), "ab\ncd\n");
+    }
+}
