@@ -6,3 +6,7 @@
 //! in terminal-mode resolution.
 //!
 //! Implementation lands incrementally per `plan.md` workstream C.
+
+pub mod grid;
+
+pub use grid::{Attrs, Cell, Color, Grid, Parser};
