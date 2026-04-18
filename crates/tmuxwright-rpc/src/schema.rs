@@ -145,3 +145,91 @@ pub struct StateValueResult {
 pub fn is_compatible(adapter_protocol: &str) -> bool {
     adapter_protocol == PROTOCOL_VERSION
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn method_names_are_stable() {
+        assert_eq!(method::HANDSHAKE, "tmw.handshake");
+        assert_eq!(method::LOCATE, "tmw.locate");
+        assert_eq!(method::ACTION_DISPATCH, "tmw.action");
+        assert_eq!(method::SNAPSHOT_SEMANTIC, "tmw.snapshot.semantic");
+    }
+
+    #[test]
+    fn capability_wire_names_are_snake_case() {
+        let j = serde_json::to_string(&vec![
+            Capability::KeyInput,
+            Capability::WidgetTree,
+            Capability::SemanticSnapshot,
+        ])
+        .unwrap();
+        assert_eq!(j, r#"["key_input","widget_tree","semantic_snapshot"]"#);
+    }
+
+    #[test]
+    fn handshake_roundtrip() {
+        let h = HandshakeResult {
+            name: "textual".into(),
+            version: "0.1.0".into(),
+            protocol: PROTOCOL_VERSION.into(),
+            capabilities: vec![Capability::KeyInput, Capability::WidgetTree],
+        };
+        let j = serde_json::to_string(&h).unwrap();
+        assert!(j.contains(r#""protocol":"1""#));
+        let back: HandshakeResult = serde_json::from_str(&j).unwrap();
+        assert_eq!(back, h);
+    }
+
+    #[test]
+    fn selector_discriminator_is_kind() {
+        let s = SelectorWire::Role {
+            role: "button".into(),
+            name: Some("Save".into()),
+        };
+        let j = serde_json::to_string(&s).unwrap();
+        assert!(j.contains(r#""kind":"role""#));
+        assert!(j.contains(r#""role":"button""#));
+        let back: SelectorWire = serde_json::from_str(&j).unwrap();
+        assert_eq!(back, s);
+    }
+
+    #[test]
+    fn action_kind_carries_payload_shape_per_variant() {
+        let a = ActionKind::Press {
+            chord: "ctrl+s".into(),
+        };
+        let j = serde_json::to_string(&a).unwrap();
+        assert!(j.contains(r#""kind":"press""#));
+        assert!(j.contains(r#""chord":"ctrl+s""#));
+        let back: ActionKind = serde_json::from_str(&j).unwrap();
+        assert_eq!(back, a);
+
+        let c = ActionKind::Click;
+        let j = serde_json::to_string(&c).unwrap();
+        assert_eq!(j, r#"{"kind":"click"}"#);
+    }
+
+    #[test]
+    fn locate_result_with_minimal_node() {
+        let r = LocateResult {
+            nodes: vec![NodeRef {
+                node_id: "n1".into(),
+                region: None,
+                role: None,
+                name: None,
+            }],
+        };
+        let j = serde_json::to_string(&r).unwrap();
+        assert_eq!(j, r#"{"nodes":[{"node_id":"n1"}]}"#);
+    }
+
+    #[test]
+    fn compat_check_accepts_current_and_rejects_other() {
+        assert!(is_compatible("1"));
+        assert!(!is_compatible("2"));
+        assert!(!is_compatible(""));
+    }
+}
