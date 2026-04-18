@@ -94,3 +94,45 @@ pub enum ChordKey {
     Char(char),
     Named(Key),
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn modifiers_bitor_and_contains() {
+        let m = Modifiers::CTRL | Modifiers::SHIFT;
+        assert!(m.contains(Modifiers::CTRL));
+        assert!(m.contains(Modifiers::SHIFT));
+        assert!(!m.contains(Modifiers::ALT));
+        assert_eq!(m.bits(), 0b101);
+    }
+
+    #[test]
+    fn empty_modifiers_contains_nothing() {
+        let m = Modifiers::empty();
+        assert!(!m.contains(Modifiers::CTRL));
+    }
+
+    #[test]
+    fn action_equality_is_value_based() {
+        let a = Action::Type("hi".into());
+        let b = Action::Type("hi".into());
+        assert_eq!(a, b);
+        let c = Action::Press(Key::Enter);
+        assert_ne!(a, c);
+    }
+
+    #[test]
+    fn chord_key_variants() {
+        let c1 = Action::Chord {
+            mods: Modifiers::CTRL,
+            key: ChordKey::Char('c'),
+        };
+        let c2 = Action::Chord {
+            mods: Modifiers::CTRL,
+            key: ChordKey::Named(Key::Left),
+        };
+        assert_ne!(c1, c2);
+    }
+}

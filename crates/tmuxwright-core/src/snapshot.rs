@@ -46,3 +46,37 @@ impl Snapshot {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn from_plain_populates_grid_and_hash() {
+        let s = Snapshot::from_plain(5, 2, "hi\r\nok");
+        assert_eq!(s.grid.row_text(0).trim_end(), "hi");
+        assert_eq!(s.grid.row_text(1).trim_end(), "ok");
+        assert_ne!(s.hash, ScreenHash([0; 32]));
+    }
+
+    #[test]
+    fn identical_input_produces_identical_hash() {
+        let a = Snapshot::from_plain(10, 1, "same");
+        let b = Snapshot::from_plain(10, 1, "same");
+        assert_eq!(a.hash, b.hash);
+    }
+
+    #[test]
+    fn different_input_produces_different_hash() {
+        let a = Snapshot::from_plain(10, 1, "left");
+        let b = Snapshot::from_plain(10, 1, "right");
+        assert_ne!(a.hash, b.hash);
+    }
+
+    #[test]
+    fn from_ansi_strips_escape_into_grid() {
+        let bytes = b"\x1b[31mred\x1b[0m";
+        let s = Snapshot::from_ansi(10, 1, bytes);
+        assert_eq!(s.grid.row_text(0).trim_end(), "red");
+    }
+}

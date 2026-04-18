@@ -46,3 +46,37 @@ pub enum WaitOutcome {
     Satisfied,
     TimedOut,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn poll_policy_default_values() {
+        let p = PollPolicy::default();
+        assert_eq!(p.interval, Duration::from_millis(25));
+        assert_eq!(p.timeout, Duration::from_secs(5));
+    }
+
+    #[test]
+    fn wait_condition_variants_are_distinct() {
+        let a = WaitCondition::Stable {
+            quiet_for: Duration::from_millis(100),
+        };
+        let b = WaitCondition::Text {
+            needle: "go".into(),
+            case_insensitive: false,
+        };
+        let names = |c: &WaitCondition| match c {
+            WaitCondition::Stable { .. } => "stable",
+            WaitCondition::Text { .. } => "text",
+        };
+        assert_ne!(names(&a), names(&b));
+    }
+
+    #[test]
+    fn outcome_equality() {
+        assert_eq!(WaitOutcome::Satisfied, WaitOutcome::Satisfied);
+        assert_ne!(WaitOutcome::Satisfied, WaitOutcome::TimedOut);
+    }
+}

@@ -31,3 +31,46 @@ pub trait Driver {
     /// snapshot (e.g., pane died, capture-pane failed, adapter offline).
     fn snapshot(&mut self) -> Result<Snapshot, DriverError>;
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct MockDriver {
+        calls: Vec<Action>,
+        snap: Snapshot,
+    }
+
+    impl Driver for MockDriver {
+        fn dispatch(&mut self, action: &Action) -> Result<(), DriverError> {
+            self.calls.push(action.clone());
+            Ok(())
+        }
+        fn snapshot(&mut self) -> Result<Snapshot, DriverError> {
+            Ok(self.snap.clone())
+        }
+    }
+
+    #[test]
+    fn driver_trait_is_object_dyn_compatible() {
+        let mut d: Box<dyn Driver> = Box::new(MockDriver {
+            calls: Vec::new(),
+            snap: Snapshot::from_plain(3, 1, "abc"),
+        });
+        d.dispatch(&Action::Type("x".into())).unwrap();
+        let s = d.snapshot().unwrap();
+        assert_eq!(s.grid.row_text(0).trim_end(), "abc");
+    }
+
+    #[test]
+    fn mock_records_dispatched_actions() {
+        let mut d = MockDriver {
+            calls: Vec::new(),
+            snap: Snapshot::from_plain(1, 1, " "),
+        };
+        d.dispatch(&Action::Type("a".into())).unwrap();
+        d.dispatch(&Action::Press(crate::action::Key::Enter))
+            .unwrap();
+        assert_eq!(d.calls.len(), 2);
+    }
+}
