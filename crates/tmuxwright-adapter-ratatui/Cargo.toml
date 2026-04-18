@@ -1,0 +1,14 @@
+[package]
+name = "tmuxwright-adapter-ratatui"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "In-process Ratatui adapter for Tmuxwright, built on Ratatui's TestBackend with opt-in semantic regions."
+
+[lints]
+workspace = true
+
+[dependencies]
