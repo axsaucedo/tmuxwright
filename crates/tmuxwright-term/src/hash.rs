@@ -90,3 +90,59 @@ pub fn hash_grid(grid: &Grid) -> ScreenHash {
     arr.copy_from_slice(&out);
     ScreenHash(arr)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::grid::Parser;
+
+    fn parse(w: u16, h: u16, s: &[u8]) -> Grid {
+        let mut p = Parser::new(w, h);
+        p.feed(s);
+        p.into_grid()
+    }
+
+    #[test]
+    fn hash_is_deterministic() {
+        let a = hash_grid(&parse(10, 3, b"hello\r\nworld"));
+        let b = hash_grid(&parse(10, 3, b"hello\r\nworld"));
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn hash_changes_on_text_change() {
+        let a = hash_grid(&parse(10, 3, b"hello"));
+        let b = hash_grid(&parse(10, 3, b"hellp"));
+        assert_ne!(a, b);
+    }
+
+    #[test]
+    fn hash_changes_on_size_change() {
+        let a = hash_grid(&parse(10, 3, b"hi"));
+        let b = hash_grid(&parse(11, 3, b"hi"));
+        assert_ne!(a, b);
+    }
+
+    #[test]
+    fn hash_changes_on_attr_change() {
+        let a = hash_grid(&parse(5, 1, b"X"));
+        let b = hash_grid(&parse(5, 1, b"\x1b[1mX"));
+        assert_ne!(a, b, "bold should change the hash");
+    }
+
+    #[test]
+    fn hash_stable_across_idempotent_redraws() {
+        let a = hash_grid(&parse(10, 2, b"abc"));
+        // Repaint the same content via absolute cursor + text.
+        let b = hash_grid(&parse(10, 2, b"\x1b[1;1Habc"));
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn hex_and_short_render_as_expected() {
+        let h = hash_grid(&parse(5, 1, b"xy"));
+        let full = h.hex();
+        assert_eq!(full.len(), 64);
+        assert_eq!(h.short(), full.chars().take(12).collect::<String>());
+    }
+}
