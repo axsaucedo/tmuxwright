@@ -450,3 +450,40 @@ mod b5_tests {
             .output();
     }
 }
+
+#[cfg(test)]
+mod b6_tests {
+    use super::*;
+    use crate::capture::pane_geometry;
+    use crate::detect::detect;
+
+    fn try_new() -> Option<Session> {
+        let tmux = detect().ok()?;
+        Session::create(tmux, &SessionOptions::default()).ok()
+    }
+
+    #[test]
+    fn resize_grows_and_shrinks_pane() {
+        let Some(s) = try_new() else { return };
+        s.resize(120, 40).expect("grow");
+        let g1 = pane_geometry(&s).expect("geom");
+        assert_eq!(g1.width, 120);
+        // status line consumes 1 row
+        assert_eq!(g1.height, 39);
+
+        s.resize(60, 20).expect("shrink");
+        let g2 = pane_geometry(&s).expect("geom");
+        assert_eq!(g2.width, 60);
+        assert_eq!(g2.height, 19);
+    }
+
+    #[test]
+    fn resize_refuses_degenerate_size() {
+        let Some(s) = try_new() else { return };
+        let err = s.resize(1, 1).unwrap_err();
+        match err {
+            SessionError::TmuxFailed { op, .. } => assert_eq!(op, "resize-window"),
+            SessionError::Io { .. } => panic!("expected TmuxFailed, got IO"),
+        }
+    }
+}
