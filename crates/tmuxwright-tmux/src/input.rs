@@ -169,3 +169,84 @@ pub fn send_mouse(
     let refs: Vec<&str> = args.iter().map(String::as_str).collect();
     session.tmux_cmd(&refs).map(|_| ())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::detect::detect;
+    use crate::session::{Session, SessionOptions};
+    use std::thread::sleep;
+    use std::time::Duration;
+
+    fn try_new_session() -> Option<Session> {
+        let tmux = detect().ok()?;
+        let opts = SessionOptions {
+            width: 80,
+            height: 24,
+            command: vec!["cat".into()],
+        };
+        Session::create(tmux, &opts).ok()
+    }
+
+    fn capture(session: &Session) -> String {
+        let target = session.primary_pane_target();
+        let out = session
+            .tmux_cmd(&["capture-pane", "-t", &target, "-p"])
+            .expect("capture-pane");
+        String::from_utf8_lossy(&out.stdout).trim_end().to_string()
+    }
+
+    #[test]
+    fn encode_mouse_sgr_formats_press_and_release() {
+        assert_eq!(
+            encode_mouse_sgr(MouseButton::Left, MouseEvent::Press, 10, 5),
+            "\x1b[<0;10;5M"
+        );
+        assert_eq!(
+            encode_mouse_sgr(MouseButton::Right, MouseEvent::Release, 3, 7),
+            "\x1b[<2;3;7m"
+        );
+        assert_eq!(
+            encode_mouse_sgr(MouseButton::WheelUp, MouseEvent::Press, 1, 1),
+            "\x1b[<64;1;1M"
+        );
+    }
+
+    #[test]
+    fn send_keys_empty_is_noop() {
+        let Some(s) = try_new_session() else { return };
+        send_keys(&s, &[]).expect("empty send_keys must succeed");
+    }
+
+    #[test]
+    fn send_keys_types_symbolic_names_into_pane() {
+        let Some(s) = try_new_session() else { return };
+        sleep(Duration::from_millis(100));
+        let keys: Vec<Key> = ["h", "i", "Enter"].iter().map(|k| Key::new(*k)).collect();
+        send_keys(&s, &keys).expect("send_keys");
+        sleep(Duration::from_millis(200));
+        let body = capture(&s);
+        assert!(body.contains("hi"), "expected 'hi' in pane, got: {body:?}");
+    }
+
+    #[test]
+    fn type_text_pastes_literal_bytes_including_key_names() {
+        let Some(s) = try_new_session() else { return };
+        sleep(Duration::from_millis(100));
+        // The literal string "Enter" must land as the word, not the key.
+        type_text(&s, "Enter-literal\n").expect("type_text");
+        sleep(Duration::from_millis(200));
+        let body = capture(&s);
+        assert!(
+            body.contains("Enter-literal"),
+            "expected literal in pane, got: {body:?}"
+        );
+    }
+
+    #[test]
+    fn send_mouse_injects_sgr_bytes_without_error() {
+        let Some(s) = try_new_session() else { return };
+        send_mouse(&s, MouseButton::Left, MouseEvent::Press, 5, 3).expect("press");
+        send_mouse(&s, MouseButton::Left, MouseEvent::Release, 5, 3).expect("release");
+    }
+}
