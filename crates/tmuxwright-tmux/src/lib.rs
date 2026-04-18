@@ -7,9 +7,11 @@
 //! Implementation lands incrementally per `plan.md` workstream B.
 
 pub mod detect;
+pub mod input;
 pub mod session;
 
 pub use detect::{
     detect, detect_at, parse_version_banner, DetectError, Tmux, Version, MIN_TMUX_VERSION,
 };
+pub use input::{encode_mouse_sgr, send_keys, send_mouse, type_text, Key, MouseButton, MouseEvent};
 pub use session::{Session, SessionError, SessionOptions};
