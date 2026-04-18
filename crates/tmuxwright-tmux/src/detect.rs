@@ -152,3 +152,91 @@ pub fn parse_version_banner(banner: &str) -> Option<Version> {
     let minor: u16 = minor_digits.parse().ok()?;
     Some(Version { major, minor })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    #[test]
+    fn parses_plain_major_minor() {
+        assert_eq!(parse_version_banner("tmux 3.4"), Some(Version::new(3, 4)));
+    }
+
+    #[test]
+    fn parses_letter_suffixed_minor() {
+        assert_eq!(parse_version_banner("tmux 3.3a"), Some(Version::new(3, 3)));
+    }
+
+    #[test]
+    fn parses_next_prefix() {
+        assert_eq!(
+            parse_version_banner("tmux next-3.5"),
+            Some(Version::new(3, 5)),
+        );
+    }
+
+    #[test]
+    fn parses_with_trailing_whitespace() {
+        assert_eq!(
+            parse_version_banner("  tmux 3.4\n"),
+            Some(Version::new(3, 4)),
+        );
+    }
+
+    #[test]
+    fn rejects_non_tmux_banner() {
+        assert_eq!(parse_version_banner("garbage output"), None);
+    }
+
+    #[test]
+    fn rejects_banner_missing_minor() {
+        assert_eq!(parse_version_banner("tmux 3"), None);
+    }
+
+    #[test]
+    fn rejects_banner_with_non_numeric_major() {
+        assert_eq!(parse_version_banner("tmux x.3"), None);
+    }
+
+    #[test]
+    fn version_ordering_is_total_and_correct() {
+        assert!(Version::new(3, 3) < Version::new(3, 4));
+        assert!(Version::new(3, 10) > Version::new(3, 4));
+        assert!(Version::new(2, 9) < Version::new(3, 0));
+        assert_eq!(Version::new(3, 3), Version::new(3, 3));
+    }
+
+    #[test]
+    fn min_version_is_three_three() {
+        assert_eq!(MIN_TMUX_VERSION, Version::new(3, 3));
+    }
+
+    #[test]
+    fn detect_at_reports_exec_error_for_missing_binary() {
+        let err = detect_at(&PathBuf::from("/definitely/not/a/real/tmux-binary"))
+            .expect_err("expected an error for a bogus path");
+        match err {
+            DetectError::Exec { .. } | DetectError::NotFound => {}
+            other => panic!("unexpected error variant: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn detect_at_reports_parse_error_for_non_tmux_binary() {
+        // /bin/echo exists on every supported platform and exits 0
+        // without emitting a tmux-shaped banner, which exercises the
+        // ParseVersion branch deterministically without a network or a
+        // real tmux install.
+        let echo = PathBuf::from("/bin/echo");
+        if !echo.exists() {
+            // macOS and Linux both ship /bin/echo, but skip defensively.
+            return;
+        }
+        let err = detect_at(&echo).expect_err("expected parse error for /bin/echo");
+        assert!(
+            matches!(err, DetectError::ParseVersion { .. }),
+            "expected ParseVersion, got {err:?}",
+        );
+    }
+}
