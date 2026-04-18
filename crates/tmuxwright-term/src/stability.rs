@@ -106,3 +106,119 @@ impl<C: Clock> Stability<C> {
         self.last_hash
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::cell::Cell as StdCell;
+
+    /// Fake clock the tests advance manually.
+    struct FakeClock {
+        now: StdCell<Instant>,
+    }
+    impl FakeClock {
+        fn new() -> Self {
+            Self {
+                now: StdCell::new(Instant::now()),
+            }
+        }
+        fn advance(&self, d: Duration) {
+            self.now.set(self.now.get() + d);
+        }
+    }
+    impl Clock for &FakeClock {
+        fn now(&self) -> Instant {
+            self.now.get()
+        }
+    }
+
+    fn h(byte: u8) -> ScreenHash {
+        ScreenHash([byte; 32])
+    }
+
+    #[test]
+    fn first_sample_reports_changing() {
+        let c = FakeClock::new();
+        let mut s = Stability::new(
+            &c,
+            StabilityConfig {
+                quiet_for: Duration::from_millis(100),
+                timeout: Duration::from_secs(1),
+            },
+        );
+        assert_eq!(s.observe(h(1)), Status::Changing);
+    }
+
+    #[test]
+    fn holding_hash_past_quiet_reports_stable() {
+        let c = FakeClock::new();
+        let mut s = Stability::new(
+            &c,
+            StabilityConfig {
+                quiet_for: Duration::from_millis(100),
+                timeout: Duration::from_secs(1),
+            },
+        );
+        s.observe(h(1));
+        c.advance(Duration::from_millis(50));
+        assert_eq!(s.observe(h(1)), Status::Changing);
+        c.advance(Duration::from_millis(60));
+        assert_eq!(s.observe(h(1)), Status::Stable);
+    }
+
+    #[test]
+    fn change_resets_quiet_window() {
+        let c = FakeClock::new();
+        let mut s = Stability::new(
+            &c,
+            StabilityConfig {
+                quiet_for: Duration::from_millis(100),
+                timeout: Duration::from_secs(1),
+            },
+        );
+        s.observe(h(1));
+        c.advance(Duration::from_millis(90));
+        assert_eq!(s.observe(h(2)), Status::Changing);
+        c.advance(Duration::from_millis(90));
+        assert_eq!(
+            s.observe(h(2)),
+            Status::Changing,
+            "must restart quiet window after hash change"
+        );
+        c.advance(Duration::from_millis(20));
+        assert_eq!(s.observe(h(2)), Status::Stable);
+    }
+
+    #[test]
+    fn timeout_fires_when_never_settles() {
+        let c = FakeClock::new();
+        let mut s = Stability::new(
+            &c,
+            StabilityConfig {
+                quiet_for: Duration::from_millis(200),
+                timeout: Duration::from_millis(300),
+            },
+        );
+        s.observe(h(1));
+        // Change every step so quiet window keeps resetting.
+        for i in 2..=15u8 {
+            c.advance(Duration::from_millis(25));
+            let st = s.observe(h(i));
+            if st == Status::Timeout {
+                return;
+            }
+        }
+        panic!("expected Timeout at some point");
+    }
+
+    #[test]
+    fn current_returns_latest_hash() {
+        let c = FakeClock::new();
+        let mut s = Stability::new(&c, StabilityConfig::default());
+        assert!(s.current().is_none());
+        s.observe(h(7));
+        assert_eq!(s.current(), Some(h(7)));
+        s.observe(h(9));
+        assert_eq!(s.current(), Some(h(9)));
+    }
+}
