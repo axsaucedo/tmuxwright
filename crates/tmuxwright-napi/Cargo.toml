@@ -1,0 +1,17 @@
+[package]
+name = "tmuxwright-napi"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "napi-rs bindings exposing the Tmuxwright engine to the TypeScript SDK."
+
+[lints]
+workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
