@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 pub mod framing;
+pub mod schema;
 
 /// Request or response id. Matches the JSON-RPC 2.0 `id` field, which
 /// may be a string or number (null/omitted is reserved for
