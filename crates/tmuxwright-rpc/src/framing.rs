@@ -97,3 +97,79 @@ pub fn read_message<R: BufRead>(r: &mut R) -> Result<Option<String>, FrameError>
         .map(Some)
         .map_err(|e| FrameError::MalformedHeader(format!("non-utf8 body: {e}")))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Cursor;
+
+    #[test]
+    fn roundtrip_single_message() {
+        let mut buf = Vec::new();
+        write_message(&mut buf, r#"{"jsonrpc":"2.0","method":"ping","id":1}"#).unwrap();
+        let mut r = Cursor::new(buf);
+        let out = read_message(&mut r).unwrap().unwrap();
+        assert!(out.contains(r#""method":"ping""#));
+    }
+
+    #[test]
+    fn roundtrip_two_messages_in_sequence() {
+        let mut buf = Vec::new();
+        write_message(&mut buf, r#"{"a":1}"#).unwrap();
+        write_message(&mut buf, r#"{"b":2}"#).unwrap();
+        let mut r = Cursor::new(buf);
+        assert_eq!(read_message(&mut r).unwrap().as_deref(), Some(r#"{"a":1}"#));
+        assert_eq!(read_message(&mut r).unwrap().as_deref(), Some(r#"{"b":2}"#));
+        assert!(read_message(&mut r).unwrap().is_none());
+    }
+
+    #[test]
+    fn clean_eof_before_any_bytes_returns_none() {
+        let mut r = Cursor::new(Vec::new());
+        assert!(read_message(&mut r).unwrap().is_none());
+    }
+
+    #[test]
+    fn truncated_body_surfaces_io_error() {
+        let mut buf = Vec::new();
+        write!(&mut buf, "Content-Length: 10\r\n\r\n").unwrap();
+        buf.extend_from_slice(b"short");
+        let mut r = Cursor::new(buf);
+        let err = read_message(&mut r).unwrap_err();
+        matches!(err, FrameError::Io(_))
+            .then_some(())
+            .expect("io err");
+    }
+
+    #[test]
+    fn missing_content_length_errors() {
+        let mut buf = Vec::new();
+        write!(&mut buf, "X-Other: 1\r\n\r\n").unwrap();
+        buf.extend_from_slice(b"body");
+        let mut r = Cursor::new(buf);
+        match read_message(&mut r).unwrap_err() {
+            FrameError::MissingContentLength => {}
+            other => panic!("wrong variant: {other}"),
+        }
+    }
+
+    #[test]
+    fn unknown_headers_are_ignored() {
+        let mut buf = Vec::new();
+        write!(
+            &mut buf,
+            "Content-Type: application/json\r\nContent-Length: 2\r\n\r\nhi"
+        )
+        .unwrap();
+        let mut r = Cursor::new(buf);
+        assert_eq!(read_message(&mut r).unwrap().as_deref(), Some("hi"));
+    }
+
+    #[test]
+    fn header_case_insensitive() {
+        let mut buf = Vec::new();
+        write!(&mut buf, "content-length: 3\r\n\r\nabc").unwrap();
+        let mut r = Cursor::new(buf);
+        assert_eq!(read_message(&mut r).unwrap().as_deref(), Some("abc"));
+    }
+}
