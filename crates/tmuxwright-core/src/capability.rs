@@ -173,3 +173,89 @@ impl Negotiated {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn hs(caps: &[Capability]) -> Handshake {
+        Handshake {
+            name: "textual".into(),
+            version: "0.1.0".into(),
+            protocol: "1".into(),
+            capabilities: caps.to_vec(),
+        }
+    }
+
+    #[test]
+    fn capability_names_are_stable() {
+        assert_eq!(Capability::KeyInput.as_str(), "key_input");
+        assert_eq!(Capability::MouseInput.as_str(), "mouse_input");
+        assert_eq!(Capability::WidgetTree.as_str(), "widget_tree");
+        assert_eq!(Capability::Focus.as_str(), "focus");
+        assert_eq!(Capability::SemanticSnapshot.as_str(), "semantic_snapshot");
+        assert_eq!(Capability::all().len(), 5);
+    }
+
+    #[test]
+    fn handshake_supports_reflects_list() {
+        let h = hs(&[Capability::KeyInput, Capability::WidgetTree]);
+        assert!(h.supports(Capability::KeyInput));
+        assert!(h.supports(Capability::WidgetTree));
+        assert!(!h.supports(Capability::Focus));
+    }
+
+    #[test]
+    fn terminal_only_routes_input_to_terminal_and_semantics_unavailable() {
+        let n = Negotiated::terminal_only();
+        assert_eq!(n.route(Capability::KeyInput), Route::Terminal);
+        assert_eq!(n.route(Capability::MouseInput), Route::Terminal);
+        assert_eq!(n.route(Capability::WidgetTree), Route::Unavailable);
+        assert_eq!(n.route(Capability::Focus), Route::Unavailable);
+        assert_eq!(n.route(Capability::SemanticSnapshot), Route::Unavailable);
+    }
+
+    #[test]
+    fn prefer_adapter_uses_adapter_when_supported() {
+        let h = hs(&[Capability::WidgetTree, Capability::KeyInput]);
+        let n = Negotiated::with_adapter(h, FallbackPolicy::PreferAdapter);
+        assert_eq!(n.route(Capability::WidgetTree), Route::Adapter);
+        assert_eq!(n.route(Capability::KeyInput), Route::Adapter);
+    }
+
+    #[test]
+    fn prefer_adapter_falls_back_to_terminal_for_missing_inputs() {
+        let h = hs(&[Capability::WidgetTree]);
+        let n = Negotiated::with_adapter(h, FallbackPolicy::PreferAdapter);
+        assert_eq!(n.route(Capability::KeyInput), Route::Terminal);
+        assert_eq!(n.route(Capability::MouseInput), Route::Terminal);
+    }
+
+    #[test]
+    fn prefer_adapter_unavailable_for_missing_semantics() {
+        let h = hs(&[Capability::KeyInput]);
+        let n = Negotiated::with_adapter(h, FallbackPolicy::PreferAdapter);
+        assert_eq!(n.route(Capability::WidgetTree), Route::Unavailable);
+        assert_eq!(n.route(Capability::Focus), Route::Unavailable);
+    }
+
+    #[test]
+    fn adapter_only_refuses_to_fall_back() {
+        let h = hs(&[Capability::WidgetTree]);
+        let n = Negotiated::with_adapter(h, FallbackPolicy::AdapterOnly);
+        assert_eq!(n.route(Capability::WidgetTree), Route::Adapter);
+        assert_eq!(n.route(Capability::KeyInput), Route::Unavailable);
+    }
+
+    #[test]
+    fn force_terminal_ignores_adapter_capabilities() {
+        let h = hs(&[
+            Capability::KeyInput,
+            Capability::MouseInput,
+            Capability::WidgetTree,
+        ]);
+        let n = Negotiated::with_adapter(h, FallbackPolicy::ForceTerminal);
+        assert_eq!(n.route(Capability::KeyInput), Route::Terminal);
+        assert_eq!(n.route(Capability::WidgetTree), Route::Unavailable);
+    }
+}
