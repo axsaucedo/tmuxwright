@@ -184,3 +184,107 @@ impl RegionLocator {
         rows.join("\n")
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::grid::Parser;
+
+    fn parse(w: u16, h: u16, s: &[u8]) -> Grid {
+        let mut p = Parser::new(w, h);
+        p.feed(s);
+        p.into_grid()
+    }
+
+    #[test]
+    fn text_locator_finds_single_match() {
+        let g = parse(20, 3, b"hello world\r\ngoodbye");
+        let m = TextLocator::new("world").first(&g).expect("match");
+        assert_eq!(
+            m.region,
+            Region {
+                x: 6,
+                y: 0,
+                width: 5,
+                height: 1
+            }
+        );
+    }
+
+    #[test]
+    fn text_locator_case_insensitive() {
+        let g = parse(20, 1, b"HELLO");
+        assert!(TextLocator::new("hello").first(&g).is_none());
+        let m = TextLocator::new("hello")
+            .case_insensitive()
+            .first(&g)
+            .expect("match");
+        assert_eq!(m.region.x, 0);
+    }
+
+    #[test]
+    fn text_locator_nth_picks_later_match() {
+        let g = parse(30, 2, b"ab ab ab\r\nab");
+        let all = TextLocator::new("ab").all(&g);
+        assert_eq!(all.len(), 4);
+        let m = TextLocator::new("ab").nth(2).first(&g).expect("nth=2");
+        assert_eq!(
+            m.region,
+            Region {
+                x: 6,
+                y: 0,
+                width: 2,
+                height: 1
+            }
+        );
+    }
+
+    #[test]
+    fn text_locator_empty_needle_returns_nothing() {
+        let g = parse(5, 1, b"abc");
+        assert!(TextLocator::new("").first(&g).is_none());
+    }
+
+    #[test]
+    fn match_center_is_middle_cell() {
+        let m = Match {
+            region: Region {
+                x: 6,
+                y: 0,
+                width: 5,
+                height: 1,
+            },
+        };
+        assert_eq!(m.center(), (8, 0));
+    }
+
+    #[test]
+    fn region_locator_clamps_to_grid() {
+        let g = parse(10, 2, b"abcdefghij\r\nklmno");
+        let r = RegionLocator::new(8, 0, 10, 3).resolve(&g).expect("some");
+        // width clamped to 10-8=2, height clamped to 2-0=2
+        assert_eq!(
+            r.region,
+            Region {
+                x: 8,
+                y: 0,
+                width: 2,
+                height: 2
+            }
+        );
+    }
+
+    #[test]
+    fn region_locator_off_grid_returns_none() {
+        let g = parse(5, 1, b"abc");
+        assert!(RegionLocator::new(10, 0, 1, 1).resolve(&g).is_none());
+        assert!(RegionLocator::new(0, 5, 1, 1).resolve(&g).is_none());
+    }
+
+    #[test]
+    fn region_locator_text_extracts_multi_line() {
+        let g = parse(10, 3, b"abcdefghij\r\nklmnopqrst\r\nuvwxyz");
+        let t = RegionLocator::new(2, 0, 4, 2).text(&g);
+        assert_eq!(t, "cdef\nmnop");
+    }
+}
