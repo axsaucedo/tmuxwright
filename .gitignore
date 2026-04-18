@@ -1,5 +1,6 @@
 # --- Tmuxwright sandbox & report (never committed) ---
-tmp/
+tmp/*
+!tmp/README.md
 REPORT.md
 
 # --- Rust ---
