@@ -297,6 +297,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "tmuxwright-engine"
+version = "0.0.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "tmuxwright-core",
+ "tmuxwright-rpc",
+ "tmuxwright-term",
+ "tmuxwright-tmux",
+]
+
+[[package]]
 name = "tmuxwright-napi"
 version = "0.0.0"
 
