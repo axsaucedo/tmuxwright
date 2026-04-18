@@ -158,3 +158,88 @@ impl Response {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn request_roundtrip() {
+        let r = Request::new(
+            Id::Num(7),
+            "handshake",
+            Some(serde_json::json!({"client":"tmuxwright"})),
+        );
+        let j = serde_json::to_string(&r).unwrap();
+        assert!(j.contains(r#""jsonrpc":"2.0""#));
+        assert!(j.contains(r#""method":"handshake""#));
+        assert!(j.contains(r#""id":7"#));
+        let back: Request = serde_json::from_str(&j).unwrap();
+        assert_eq!(back, r);
+    }
+
+    #[test]
+    fn response_ok_and_err_have_correct_shape() {
+        let ok = Response::ok(Id::Str("a".into()), serde_json::json!(42));
+        let j = serde_json::to_string(&ok).unwrap();
+        assert!(j.contains(r#""result":42"#));
+        assert!(!j.contains("error"));
+
+        let e = Response::err(
+            Id::Num(1),
+            RpcError::new(RpcError::METHOD_NOT_FOUND, "no such method"),
+        );
+        let j = serde_json::to_string(&e).unwrap();
+        assert!(j.contains(r#""code":-32601"#));
+        assert!(j.contains(r#""message":"no such method""#));
+        assert!(!j.contains("result"));
+    }
+
+    #[test]
+    fn response_roundtrip_both_variants() {
+        let ok = Response::ok(Id::Num(3), serde_json::json!({"x":1}));
+        let back: Response = serde_json::from_str(&serde_json::to_string(&ok).unwrap()).unwrap();
+        assert_eq!(back, ok);
+
+        let e = Response::err(Id::Num(4), RpcError::new(-1, "bad"));
+        let back: Response = serde_json::from_str(&serde_json::to_string(&e).unwrap()).unwrap();
+        assert_eq!(back, e);
+    }
+
+    #[test]
+    fn notification_has_no_id() {
+        let n = Notification::new("progress", Some(serde_json::json!({"p":50})));
+        let j = serde_json::to_string(&n).unwrap();
+        assert!(!j.contains(r#""id""#));
+    }
+
+    #[test]
+    fn rejects_wrong_jsonrpc_version() {
+        let bad = r#"{"jsonrpc":"1.0","method":"x","id":1}"#;
+        let r: Result<Request, _> = serde_json::from_str(bad);
+        assert!(r.is_err());
+    }
+
+    #[test]
+    fn rpc_error_with_data_includes_data() {
+        let e = RpcError::new(-32000, "x").with_data(serde_json::json!({"why":"because"}));
+        let j = serde_json::to_string(&e).unwrap();
+        assert!(j.contains(r#""data":{"why":"because"}"#));
+    }
+
+    #[test]
+    fn rpc_error_without_data_omits_data_field() {
+        let e = RpcError::new(-32000, "x");
+        let j = serde_json::to_string(&e).unwrap();
+        assert!(!j.contains("data"));
+    }
+
+    #[test]
+    fn id_supports_string_and_number_forms() {
+        let r: Request =
+            serde_json::from_str(r#"{"jsonrpc":"2.0","method":"m","id":"abc"}"#).unwrap();
+        assert_eq!(r.id, Id::Str("abc".into()));
+        let r: Request = serde_json::from_str(r#"{"jsonrpc":"2.0","method":"m","id":5}"#).unwrap();
+        assert_eq!(r.id, Id::Num(5));
+    }
+}
