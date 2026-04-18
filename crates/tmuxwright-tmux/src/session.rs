@@ -212,6 +212,24 @@ impl Session {
             }),
         }
     }
+
+    /// Resize the session's single window to `width` x `height` cells.
+    /// Uses `resize-window` (tmux ≥ 2.9) which works on detached
+    /// sessions; the pane inside the window inherits the new size.
+    pub fn resize(&self, width: u16, height: u16) -> Result<(), SessionError> {
+        if width < 2 || height < 2 {
+            return Err(SessionError::TmuxFailed {
+                op: "resize-window",
+                status: None,
+                stderr: format!("refusing to resize below 2x2 (got {width}x{height})"),
+            });
+        }
+        let w = width.to_string();
+        let h = height.to_string();
+        let target = format!("{}:", self.name);
+        self.tmux_cmd(&["resize-window", "-t", &target, "-x", &w, "-y", &h])
+            .map(|_| ())
+    }
 }
 
 impl Drop for Session {
