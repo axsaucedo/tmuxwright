@@ -243,3 +243,151 @@ impl Recorder {
         Ok(Some(name))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempdir_shim::TempDirShim;
+
+    use crate::action::Modifiers;
+    use crate::error::Preservation;
+
+    #[test]
+    fn records_action_and_produces_jsonl() {
+        let mut r = Recorder::new();
+        let before = Snapshot::from_plain(5, 1, "a    ");
+        let after = Snapshot::from_plain(5, 1, "ab   ");
+        r.record_action(&Action::Type("b".into()), Some(&before), &after)
+            .unwrap();
+        let jsonl = r.to_jsonl();
+        assert!(jsonl.starts_with('{'));
+        assert!(jsonl.contains(r#""kind":"action""#));
+        assert!(jsonl.contains(&before.hash.hex()));
+        assert!(jsonl.contains(&after.hash.hex()));
+        assert!(jsonl.ends_with('\n'));
+    }
+
+    #[test]
+    fn steps_are_monotonic() {
+        let mut r = Recorder::new();
+        let s = Snapshot::from_plain(1, 1, " ");
+        r.record_action(&Action::Type("x".into()), None, &s)
+            .unwrap();
+        r.record_wait(
+            "stable",
+            "satisfied",
+            std::time::Duration::from_millis(10),
+            "h",
+        );
+        r.record_assert("ok", true, &s);
+        assert_eq!(r.entries().len(), 3);
+        let steps: Vec<u64> = r
+            .entries()
+            .iter()
+            .map(|e| match e {
+                TraceEntry::Action { step, .. }
+                | TraceEntry::Wait { step, .. }
+                | TraceEntry::Assert { step, .. } => *step,
+                _ => panic!("unexpected kind"),
+            })
+            .collect();
+        assert_eq!(steps, vec![0, 1, 2]);
+    }
+
+    #[test]
+    fn error_entry_includes_preservation() {
+        let mut r = Recorder::new();
+        let err = EngineError::AssertFailed {
+            description: "expected x".into(),
+            preservation: Some(Preservation::new("sock", "sess")),
+        };
+        r.record_error(&err);
+        let jsonl = r.to_jsonl();
+        assert!(jsonl.contains(r#""kind":"error""#));
+        assert!(jsonl.contains("tmux -L sock attach -t sess"));
+        assert!(jsonl.contains(r#""error_kind":"assert_failed""#));
+    }
+
+    #[test]
+    fn persisting_writes_trace_and_artifacts() {
+        let dir = TempDirShim::new("tmuxwright-trace");
+        let mut r = Recorder::new().with_artifact_dir(dir.path().to_path_buf());
+        let snap = Snapshot::from_plain(3, 1, "abc");
+        r.record_action(
+            &Action::Chord {
+                mods: Modifiers::CTRL,
+                key: crate::action::ChordKey::Char('c'),
+            },
+            None,
+            &snap,
+        )
+        .unwrap();
+        let trace_path = r.persist_trace().unwrap().unwrap();
+        assert!(trace_path.exists());
+        let trace = fs::read_to_string(&trace_path).unwrap();
+        assert!(trace.contains(r#""kind":"action""#));
+        let entries: Vec<&str> = trace.lines().collect();
+        assert_eq!(entries.len(), 1);
+        // artifact file present
+        let mut saw = false;
+        for entry in fs::read_dir(dir.path()).unwrap() {
+            let p = entry.unwrap().path();
+            let name = p.file_name().unwrap().to_string_lossy().into_owned();
+            if name.starts_with("step-0000-after") {
+                assert_eq!(fs::read_to_string(&p).unwrap(), "abc");
+                saw = true;
+            }
+        }
+        assert!(saw, "expected step-0000-after artifact");
+    }
+
+    #[test]
+    fn entries_roundtrip_through_serde() {
+        let mut r = Recorder::new();
+        let s = Snapshot::from_plain(2, 1, "xy");
+        r.record_assert("xy on screen", true, &s);
+        let jsonl = r.to_jsonl();
+        let parsed: TraceEntry = serde_json::from_str(jsonl.trim()).unwrap();
+        match parsed {
+            TraceEntry::Assert {
+                ok, description, ..
+            } => {
+                assert!(ok);
+                assert_eq!(description, "xy on screen");
+            }
+            other => panic!("wrong variant: {other:?}"),
+        }
+    }
+}
+
+// Minimal temp-dir helper local to the test module to avoid pulling
+// tempfile just for this crate. Mimics the subset we need.
+#[cfg(test)]
+mod tempdir_shim {
+    use std::path::{Path, PathBuf};
+
+    pub struct TempDirShim {
+        path: PathBuf,
+    }
+
+    impl TempDirShim {
+        pub fn new(prefix: &str) -> Self {
+            let nanos = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos();
+            let path = std::env::temp_dir().join(format!("{prefix}-{nanos}"));
+            std::fs::create_dir_all(&path).unwrap();
+            Self { path }
+        }
+        pub fn path(&self) -> &Path {
+            &self.path
+        }
+    }
+
+    impl Drop for TempDirShim {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.path);
+        }
+    }
+}
