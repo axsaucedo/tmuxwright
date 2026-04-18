@@ -95,15 +95,7 @@ pub fn type_text(session: &Session, text: &str) -> Result<(), SessionError> {
     // 2. paste-buffer -b <buf> -t <target> -d  (-d deletes buffer after)
     let target = session.primary_pane_target();
     session
-        .tmux_cmd(&[
-            "paste-buffer",
-            "-b",
-            &buffer_name,
-            "-t",
-            &target,
-            "-d",
-            "-p",
-        ])
+        .tmux_cmd(&["paste-buffer", "-b", &buffer_name, "-t", &target, "-d"])
         .map(|_| ())
 }
 
