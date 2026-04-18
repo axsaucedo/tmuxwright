@@ -9,6 +9,8 @@
 
 pub mod grid;
 pub mod hash;
+pub mod stability;
 
 pub use grid::{Attrs, Cell, Color, Grid, Parser};
 pub use hash::{hash_grid, ScreenHash};
+pub use stability::{Clock, MonotonicClock, Stability, StabilityConfig, Status};
