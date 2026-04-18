@@ -169,6 +169,29 @@ impl Session {
         self.kill_on_drop = false;
     }
 
+    /// Whether the tmux server backing this session is still running.
+    /// Runs `has-session -t <name>` on the session's isolated socket;
+    /// any non-zero exit is treated as "not alive" rather than an
+    /// error so callers can use this as a boolean probe.
+    #[must_use]
+    pub fn is_alive(&self) -> bool {
+        let mut cmd = Command::new(self.tmux.path());
+        cmd.args(["-L", &self.socket, "has-session", "-t", &self.name]);
+        matches!(cmd.output(), Ok(o) if o.status.success())
+    }
+
+    /// Metadata a higher layer can pack into a failure report so a
+    /// developer can reconnect to the preserved session.
+    #[must_use]
+    pub fn reconnect_hint(&self) -> ReconnectHint {
+        ReconnectHint {
+            command: self.reconnect_command(),
+            socket: self.socket.clone(),
+            session: self.name.clone(),
+            pane_id: self.pane_id.clone(),
+        }
+    }
+
     /// Run `tmux -L <socket> <args...>` against this session's server.
     pub fn tmux_cmd(&self, args: &[&str]) -> Result<Output, SessionError> {
         let mut cmd = Command::new(self.tmux.path());
@@ -197,6 +220,17 @@ impl Drop for Session {
             let _ = self.kill();
         }
     }
+}
+
+/// Structured metadata describing how to reconnect to a preserved
+/// tmux session after a failure. Plain data so higher layers can
+/// serialize it into trace/error output.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReconnectHint {
+    pub command: String,
+    pub socket: String,
+    pub session: String,
+    pub pane_id: String,
 }
 
 fn random_suffix(n: usize) -> String {
