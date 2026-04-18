@@ -12,4 +12,6 @@ description = "Tmuxwright engine core: actions, waits, snapshots, traces, locato
 workspace = true
 
 [dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 tmuxwright-term = { path = "../tmuxwright-term" }

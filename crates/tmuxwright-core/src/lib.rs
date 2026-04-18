@@ -16,6 +16,7 @@ pub mod driver;
 pub mod error;
 pub mod resolver;
 pub mod snapshot;
+pub mod trace;
 pub mod wait;
 
 pub use action::{Action, ChordKey, Key, Modifiers, MouseButton, Point};
@@ -24,4 +25,5 @@ pub use driver::{Driver, DriverError};
 pub use error::{EngineError, EngineResult, Preservation};
 pub use resolver::{resolve, NullSemanticBackend, Resolved, Selector, SemanticBackend, Via};
 pub use snapshot::Snapshot;
+pub use trace::{PreservationRecord, Recorder, RegionRecord, TraceEntry};
 pub use wait::{PollPolicy, WaitCondition, WaitOutcome};
