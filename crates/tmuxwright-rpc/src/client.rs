@@ -187,3 +187,112 @@ impl<R: BufRead, W: Write> Client<R, W> {
         self.call_no_params(method::SHUTDOWN)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Remove the unused `serve_one` helper by not defining it — tests below
+    // exercise it via the real `server::serve_one` path.
+
+    #[test]
+    fn handshake_happy_path() {
+        // Preload the reader with a canned response for id=1.
+        let hr = HandshakeResult {
+            name: "mock".into(),
+            version: "0.0.1".into(),
+            protocol: PROTOCOL_VERSION.into(),
+            capabilities: vec![],
+        };
+        let mut out = Vec::new();
+        write_message(
+            &mut out,
+            &serde_json::to_string(&Response::ok(
+                Id::Num(1),
+                serde_json::to_value(&hr).unwrap(),
+            ))
+            .unwrap(),
+        )
+        .unwrap();
+        let mut rd = std::io::Cursor::new(out);
+        let mut wr = Vec::new();
+        let mut c = Client::new(&mut rd, &mut wr);
+        let r = c.handshake("tmw", "0").unwrap();
+        assert_eq!(r.name, "mock");
+        // Verify the client actually wrote a handshake request.
+        let mut wrc = std::io::Cursor::new(wr);
+        let raw = read_message(&mut wrc).unwrap().unwrap();
+        let req: Request = serde_json::from_str(&raw).unwrap();
+        assert_eq!(req.method, method::HANDSHAKE);
+        assert_eq!(req.id, Id::Num(1));
+    }
+
+    #[test]
+    fn rpc_error_surfaces_as_client_error() {
+        // Preload a response with id 1 carrying an RpcError.
+        let mut out = Vec::new();
+        let resp = Response::err(
+            Id::Num(1),
+            RpcError::new(RpcError::METHOD_NOT_FOUND, "nope"),
+        );
+        write_message(&mut out, &serde_json::to_string(&resp).unwrap()).unwrap();
+        let mut rd = std::io::Cursor::new(out);
+        let mut wr = Vec::new();
+        let mut c = Client::new(&mut rd, &mut wr);
+        let e = c.call_no_params::<Value>("tmw.whatever").unwrap_err();
+        match e {
+            ClientError::Rpc(err) => {
+                assert_eq!(err.code, RpcError::METHOD_NOT_FOUND);
+            }
+            other => panic!("wrong variant: {other}"),
+        }
+    }
+
+    #[test]
+    fn id_mismatch_is_an_error() {
+        let mut out = Vec::new();
+        let resp = Response::ok(Id::Num(999), Value::Null);
+        write_message(&mut out, &serde_json::to_string(&resp).unwrap()).unwrap();
+        let mut rd = std::io::Cursor::new(out);
+        let mut wr = Vec::new();
+        let mut c = Client::new(&mut rd, &mut wr);
+        let e = c.call_no_params::<Value>("tmw.x").unwrap_err();
+        matches!(e, ClientError::IdMismatch { .. })
+            .then_some(())
+            .expect("id mismatch");
+    }
+
+    #[test]
+    fn protocol_mismatch_rejected_by_handshake() {
+        let mut out = Vec::new();
+        let resp = Response::ok(
+            Id::Num(1),
+            serde_json::to_value(HandshakeResult {
+                name: "mock".into(),
+                version: "0".into(),
+                protocol: "99".into(),
+                capabilities: vec![],
+            })
+            .unwrap(),
+        );
+        write_message(&mut out, &serde_json::to_string(&resp).unwrap()).unwrap();
+        let mut rd = std::io::Cursor::new(out);
+        let mut wr = Vec::new();
+        let mut c = Client::new(&mut rd, &mut wr);
+        let e = c.handshake("tmw", "0").unwrap_err();
+        matches!(e, ClientError::ProtocolMismatch { .. })
+            .then_some(())
+            .expect("proto mismatch");
+    }
+
+    #[test]
+    fn eof_before_response_is_an_error() {
+        let mut rd = std::io::Cursor::new(Vec::<u8>::new());
+        let mut wr = Vec::new();
+        let mut c = Client::new(&mut rd, &mut wr);
+        let e = c.call_no_params::<Value>("tmw.x").unwrap_err();
+        matches!(e, ClientError::UnexpectedEof)
+            .then_some(())
+            .expect("eof");
+    }
+}
