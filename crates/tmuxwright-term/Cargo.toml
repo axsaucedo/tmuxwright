@@ -12,3 +12,4 @@ description = "Tmuxwright terminal model: ANSI/VT parsing, grid, stable screen h
 workspace = true
 
 [dependencies]
+vte = "0.13"
