@@ -104,3 +104,58 @@ mod tests {
         assert_eq!(strip_trailing_newline("abc\n\n\n".into()), "abc");
     }
 }
+
+#[cfg(test)]
+mod integ {
+    use super::*;
+    use crate::detect::detect;
+    use crate::input::{send_keys, type_text, Key};
+    use crate::session::{Session, SessionOptions};
+    use std::thread::sleep;
+    use std::time::Duration;
+
+    fn try_new_session() -> Option<Session> {
+        let tmux = detect().ok()?;
+        let opts = SessionOptions {
+            width: 80,
+            height: 24,
+            command: vec!["bash".into(), "--noprofile".into(), "--norc".into()],
+        };
+        Session::create(tmux, &opts).ok()
+    }
+
+    #[test]
+    fn visible_plain_returns_pane_contents() {
+        let Some(s) = try_new_session() else { return };
+        sleep(Duration::from_millis(150));
+        type_text(&s, "echo hello_visible\n").unwrap();
+        sleep(Duration::from_millis(250));
+        let v = capture_visible_plain(&s).expect("capture");
+        assert!(v.contains("hello_visible"), "got: {v:?}");
+    }
+
+    #[test]
+    fn scrollback_capture_includes_history_and_ansi() {
+        let Some(s) = try_new_session() else { return };
+        sleep(Duration::from_millis(150));
+        type_text(&s, "for i in $(seq 1 40); do echo row_$i; done\n").unwrap();
+        sleep(Duration::from_millis(400));
+        let full = capture_with_scrollback_ansi(&s).expect("scrollback");
+        assert!(full.contains("row_1"), "row_1 missing in scrollback");
+        assert!(full.contains("row_40"), "row_40 missing in scrollback");
+    }
+
+    #[test]
+    fn geometry_reports_size_and_cursor_advance() {
+        let Some(s) = try_new_session() else { return };
+        sleep(Duration::from_millis(150));
+        let g0 = pane_geometry(&s).expect("geometry");
+        assert_eq!(g0.width, 80);
+        assert!(g0.height >= 20 && g0.height <= 24);
+        let before_x = g0.cursor_x;
+        send_keys(&s, &[Key::new("a"), Key::new("b"), Key::new("c")]).unwrap();
+        sleep(Duration::from_millis(150));
+        let g1 = pane_geometry(&s).expect("geometry2");
+        assert_eq!(g1.cursor_x, before_x + 3);
+    }
+}
