@@ -178,3 +178,108 @@ impl std::error::Error for EngineError {
 
 /// Engine-level result alias.
 pub type EngineResult<T> = Result<T, EngineError>;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn preservation_new_builds_reconnect_cmd_and_hint() {
+        let p = Preservation::new("tmuxwright-abc", "run-42");
+        assert_eq!(p.socket, "tmuxwright-abc");
+        assert_eq!(p.session, "run-42");
+        assert_eq!(p.reconnect_cmd, "tmux -L tmuxwright-abc attach -t run-42");
+        assert!(p.hint.contains("run:"));
+        assert!(p.hint.contains(&p.reconnect_cmd));
+    }
+
+    #[test]
+    fn kind_tags_are_stable() {
+        let cases: Vec<(EngineError, &str)> = vec![
+            (
+                EngineError::WaitTimeout {
+                    condition: WaitCondition::Stable {
+                        quiet_for: Duration::from_millis(10),
+                    },
+                    waited: Duration::from_millis(20),
+                    preservation: None,
+                },
+                "wait_timeout",
+            ),
+            (
+                EngineError::AssertFailed {
+                    description: "x".into(),
+                    preservation: None,
+                },
+                "assert_failed",
+            ),
+            (
+                EngineError::LocatorMiss {
+                    selector: "text=ok".into(),
+                    found: 0,
+                    preservation: None,
+                },
+                "locator_miss",
+            ),
+            (
+                EngineError::Adapter {
+                    message: "offline".into(),
+                    preservation: None,
+                },
+                "adapter",
+            ),
+            (
+                EngineError::Backend {
+                    message: "tmux gone".into(),
+                    preservation: None,
+                },
+                "backend",
+            ),
+        ];
+        for (e, expected) in cases {
+            assert_eq!(e.kind(), expected);
+        }
+    }
+
+    #[test]
+    fn preservation_can_be_attached_after_construction() {
+        let e = EngineError::AssertFailed {
+            description: "expected 'hi'".into(),
+            preservation: None,
+        };
+        assert!(e.preservation().is_none());
+        let e = e.with_preservation(Preservation::new("sock", "sess"));
+        assert_eq!(e.preservation().unwrap().session, "sess");
+    }
+
+    #[test]
+    fn display_includes_preservation_hint() {
+        let e = EngineError::AssertFailed {
+            description: "no match".into(),
+            preservation: Some(Preservation::new("s1", "run")),
+        };
+        let s = format!("{e}");
+        assert!(s.contains("assertion failed: no match"));
+        assert!(s.contains("tmux -L s1 attach -t run"));
+    }
+
+    #[test]
+    fn dispatch_error_exposes_source() {
+        let source: Box<dyn std::error::Error + Send + Sync> = "boom".into();
+        let e = EngineError::Dispatch {
+            action: Action::Press(crate::action::Key::Enter),
+            source,
+            preservation: None,
+        };
+        assert!(std::error::Error::source(&e).is_some());
+    }
+
+    #[test]
+    fn non_source_errors_return_none_for_source() {
+        let e = EngineError::AssertFailed {
+            description: "x".into(),
+            preservation: None,
+        };
+        assert!(std::error::Error::source(&e).is_none());
+    }
+}
