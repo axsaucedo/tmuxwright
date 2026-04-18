@@ -188,3 +188,234 @@ fn miss(selector: &Selector, found: usize) -> EngineError {
         preservation: None,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tmuxwright_term::{Parser, Region};
+
+    use crate::capability::{Capability, FallbackPolicy, Handshake};
+
+    fn grid(s: &[u8]) -> Grid {
+        let mut p = Parser::new(30, 3);
+        p.feed(s);
+        p.into_grid()
+    }
+
+    struct MockBackend {
+        answer: Option<Match>,
+        called: bool,
+    }
+    impl SemanticBackend for MockBackend {
+        fn query(&mut self, _s: &Selector) -> Result<Option<Match>, EngineError> {
+            self.called = true;
+            Ok(self.answer)
+        }
+    }
+
+    fn textual() -> Negotiated {
+        Negotiated::with_adapter(
+            Handshake {
+                name: "textual".into(),
+                version: "0.1.0".into(),
+                protocol: "1".into(),
+                capabilities: vec![
+                    Capability::WidgetTree,
+                    Capability::SemanticSnapshot,
+                    Capability::KeyInput,
+                ],
+            },
+            FallbackPolicy::PreferAdapter,
+        )
+    }
+
+    #[test]
+    fn text_resolves_against_grid_in_terminal_only() {
+        let g = grid(b"hello world");
+        let n = Negotiated::terminal_only();
+        let mut b = NullSemanticBackend;
+        let r = resolve(
+            &Selector::Text {
+                needle: "world".into(),
+                case_insensitive: false,
+                nth: 0,
+            },
+            &g,
+            &n,
+            &mut b,
+        )
+        .unwrap();
+        assert_eq!(r.via, Via::Terminal);
+        assert_eq!(r.hit.region.x, 6);
+    }
+
+    #[test]
+    fn text_prefers_adapter_when_backend_returns_hit() {
+        let g = grid(b"hello world");
+        let n = textual();
+        let fake = Match {
+            region: Region {
+                x: 99,
+                y: 0,
+                width: 5,
+                height: 1,
+            },
+        };
+        let mut b = MockBackend {
+            answer: Some(fake),
+            called: false,
+        };
+        let r = resolve(
+            &Selector::Text {
+                needle: "world".into(),
+                case_insensitive: false,
+                nth: 0,
+            },
+            &g,
+            &n,
+            &mut b,
+        )
+        .unwrap();
+        assert_eq!(r.via, Via::Adapter);
+        assert_eq!(r.hit.region.x, 99, "adapter answer wins over grid");
+    }
+
+    #[test]
+    fn text_falls_back_to_grid_when_adapter_has_no_hit() {
+        let g = grid(b"hello world");
+        let n = textual();
+        let mut b = MockBackend {
+            answer: None,
+            called: false,
+        };
+        let r = resolve(
+            &Selector::Text {
+                needle: "world".into(),
+                case_insensitive: false,
+                nth: 0,
+            },
+            &g,
+            &n,
+            &mut b,
+        )
+        .unwrap();
+        assert!(b.called);
+        assert_eq!(r.via, Via::Terminal);
+        assert_eq!(r.hit.region.x, 6);
+    }
+
+    #[test]
+    fn role_requires_adapter_and_uses_it() {
+        let g = grid(b"some text");
+        let n = textual();
+        let hit = Match {
+            region: Region {
+                x: 3,
+                y: 1,
+                width: 10,
+                height: 1,
+            },
+        };
+        let mut b = MockBackend {
+            answer: Some(hit),
+            called: false,
+        };
+        let r = resolve(
+            &Selector::Role {
+                role: "button".into(),
+                name: Some("OK".into()),
+            },
+            &g,
+            &n,
+            &mut b,
+        )
+        .unwrap();
+        assert_eq!(r.via, Via::Adapter);
+        assert_eq!(r.hit.region.y, 1);
+    }
+
+    #[test]
+    fn role_miss_when_adapter_unavailable() {
+        let g = grid(b"anything");
+        let n = Negotiated::terminal_only();
+        let mut b = NullSemanticBackend;
+        let err = resolve(
+            &Selector::Role {
+                role: "button".into(),
+                name: None,
+            },
+            &g,
+            &n,
+            &mut b,
+        )
+        .unwrap_err();
+        assert_eq!(err.kind(), "locator_miss");
+    }
+
+    #[test]
+    fn text_miss_when_not_found_anywhere() {
+        let g = grid(b"nothing here");
+        let n = Negotiated::terminal_only();
+        let mut b = NullSemanticBackend;
+        let err = resolve(
+            &Selector::Text {
+                needle: "zzz".into(),
+                case_insensitive: false,
+                nth: 0,
+            },
+            &g,
+            &n,
+            &mut b,
+        )
+        .unwrap_err();
+        assert_eq!(err.kind(), "locator_miss");
+    }
+
+    #[test]
+    fn region_resolves_against_grid() {
+        let g = grid(b"abcdefghij");
+        let n = Negotiated::terminal_only();
+        let mut b = NullSemanticBackend;
+        let r = resolve(
+            &Selector::Region {
+                x: 2,
+                y: 0,
+                width: 3,
+                height: 1,
+            },
+            &g,
+            &n,
+            &mut b,
+        )
+        .unwrap();
+        assert_eq!(r.via, Via::Terminal);
+        assert_eq!(r.hit.region.width, 3);
+    }
+
+    #[test]
+    fn adapter_error_propagates() {
+        struct ErrBackend;
+        impl SemanticBackend for ErrBackend {
+            fn query(&mut self, _s: &Selector) -> Result<Option<Match>, EngineError> {
+                Err(EngineError::Adapter {
+                    message: "offline".into(),
+                    preservation: None,
+                })
+            }
+        }
+        let g = grid(b"x");
+        let n = textual();
+        let mut b = ErrBackend;
+        let err = resolve(
+            &Selector::Role {
+                role: "button".into(),
+                name: None,
+            },
+            &g,
+            &n,
+            &mut b,
+        )
+        .unwrap_err();
+        assert_eq!(err.kind(), "adapter");
+    }
+}
