@@ -62,6 +62,10 @@ pub struct Session {
     tmux: Tmux,
     socket: String,
     name: String,
+    /// Initial pane id (form `%N`). tmux pane ids are server-global and
+    /// independent of the user's `base-index` / `pane-base-index`, so
+    /// this is the only safe way to target the pane without re-querying.
+    pane_id: String,
     /// Whether the session should be killed on Drop. Preserve-on-failure
     /// flips this to false so developers can reconnect.
     kill_on_drop: bool,
@@ -86,18 +90,30 @@ impl Session {
             &opts.width.to_string(),
             "-y",
             &opts.height.to_string(),
+            "-P",
+            "-F",
+            "#{pane_id}",
         ]);
         if !opts.command.is_empty() {
             // When users supply a command, run it as the pane's initial
             // process. tmux accepts trailing args as the command argv.
             cmd.args(&opts.command);
         }
-        run(&mut cmd, "new-session")?;
+        let out = run_output(&mut cmd, "new-session")?;
+        let pane_id = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        if !pane_id.starts_with('%') {
+            return Err(SessionError::TmuxFailed {
+                op: "new-session",
+                status: out.status.code(),
+                stderr: format!("unexpected pane id: {pane_id:?}"),
+            });
+        }
 
         Ok(Self {
             tmux,
             socket,
             name,
+            pane_id,
             kill_on_drop: true,
         })
     }
@@ -132,12 +148,18 @@ impl Session {
         )
     }
 
-    /// Primary pane target of the form `session:window.pane` suitable
-    /// for `-t` in send-keys, capture-pane, etc. For now we always use
-    /// window 0 pane 0 — multi-pane support lands later in workstream B.
+    /// Primary pane target for `-t` in send-keys, capture-pane, etc.
+    /// Uses the tmux pane id (`%N`) captured at session creation, which
+    /// is server-global and immune to user `base-index` settings.
     #[must_use]
     pub fn primary_pane_target(&self) -> String {
-        format!("{}:0.0", self.name)
+        self.pane_id.clone()
+    }
+
+    /// Raw pane id (e.g. `%17`).
+    #[must_use]
+    pub fn pane_id(&self) -> &str {
+        &self.pane_id
     }
 
     /// Preserve the tmux session on Drop instead of killing it. Intended
@@ -184,10 +206,6 @@ fn random_suffix(n: usize) -> String {
         .map(char::from)
         .collect::<String>()
         .to_ascii_lowercase()
-}
-
-fn run(cmd: &mut Command, op: &'static str) -> Result<(), SessionError> {
-    run_output(cmd, op).map(|_| ())
 }
 
 fn run_output(cmd: &mut Command, op: &'static str) -> Result<Output, SessionError> {
