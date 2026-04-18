@@ -371,3 +371,64 @@ mod tests {
         assert!(cmd.contains(session.name()));
     }
 }
+
+#[cfg(test)]
+mod b5_tests {
+    use super::*;
+    use crate::detect::detect;
+    use std::process::Command;
+
+    fn try_new() -> Option<Session> {
+        let tmux = detect().ok()?;
+        Session::create(tmux, &SessionOptions::default()).ok()
+    }
+
+    #[test]
+    fn is_alive_tracks_server_lifecycle() {
+        let Some(s) = try_new() else { return };
+        assert!(s.is_alive(), "just-created session must be alive");
+        let socket = s.socket().to_string();
+        let name = s.name().to_string();
+        let path = s.tmux_path();
+        drop(s);
+        let post = Command::new(&path)
+            .args(["-L", &socket, "has-session", "-t", &name])
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false);
+        assert!(!post, "Drop(kill_on_drop=true) must kill the server");
+    }
+
+    #[test]
+    fn reconnect_hint_exposes_all_fields() {
+        let Some(s) = try_new() else { return };
+        let h = s.reconnect_hint();
+        assert!(h.command.contains(" -L "));
+        assert!(h.command.contains("attach"));
+        assert!(h.command.contains(&h.socket));
+        assert!(h.command.contains(&h.session));
+        assert!(h.pane_id.starts_with('%'));
+        assert_eq!(h.socket, s.socket());
+        assert_eq!(h.session, s.name());
+    }
+
+    #[test]
+    fn preserve_keeps_server_alive_past_drop() {
+        let Some(mut s) = try_new() else { return };
+        s.preserve();
+        let path = s.tmux_path();
+        let socket = s.socket().to_string();
+        let name = s.name().to_string();
+        drop(s);
+        let alive = Command::new(&path)
+            .args(["-L", &socket, "has-session", "-t", &name])
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false);
+        assert!(alive, "preserve() must keep server running");
+        // cleanup so we don't leak a server between test runs
+        let _ = Command::new(&path)
+            .args(["-L", &socket, "kill-server"])
+            .output();
+    }
+}
