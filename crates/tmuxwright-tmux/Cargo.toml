@@ -12,3 +12,5 @@ description = "Tmuxwright tmux control layer: sessions, panes, input injection, 
 workspace = true
 
 [dependencies]
+thiserror = "1.0"
+which = "6.0"
