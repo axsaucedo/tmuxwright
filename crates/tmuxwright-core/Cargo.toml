@@ -12,3 +12,4 @@ description = "Tmuxwright engine core: actions, waits, snapshots, traces, locato
 workspace = true
 
 [dependencies]
+tmuxwright-term = { path = "../tmuxwright-term" }
