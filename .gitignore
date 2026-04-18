@@ -1,0 +1,41 @@
+# --- Tmuxwright sandbox & report (never committed) ---
+tmp/
+REPORT.md
+
+# --- Rust ---
+target/
+**/*.rs.bk
+Cargo.lock.bak
+
+# --- Node / pnpm ---
+node_modules/
+.pnpm-store/
+dist/
+build/
+*.tsbuildinfo
+.npmrc.local
+
+# --- Python (Textual adapter) ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# --- Go (Bubble Tea adapter) ---
+vendor/
+
+# --- Editors / OS ---
+.idea/
+.vscode/
+.DS_Store
+*.swp
+*.swo
+
+# --- Logs / coverage / misc ---
+*.log
+coverage/
+.nyc_output/
