@@ -8,12 +8,16 @@
 //!
 //! Implementation lands incrementally per `plan.md` workstream D.
 
+#![allow(clippy::result_large_err)]
+
 pub mod action;
 pub mod driver;
+pub mod error;
 pub mod snapshot;
 pub mod wait;
 
 pub use action::{Action, ChordKey, Key, Modifiers, MouseButton, Point};
 pub use driver::{Driver, DriverError};
+pub use error::{EngineError, EngineResult, Preservation};
 pub use snapshot::Snapshot;
 pub use wait::{PollPolicy, WaitCondition, WaitOutcome};
