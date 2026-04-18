@@ -203,3 +203,119 @@ fn run_output(cmd: &mut Command, op: &'static str) -> Result<Output, SessionErro
     }
     Ok(output)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::detect;
+
+    fn tmux_or_skip() -> Option<Tmux> {
+        if let Ok(t) = detect() {
+            Some(t)
+        } else {
+            eprintln!("skipping: tmux not detected on PATH");
+            None
+        }
+    }
+
+    #[test]
+    fn random_suffix_is_lowercase_alphanumeric_and_expected_length() {
+        for _ in 0..50 {
+            let s = random_suffix(12);
+            assert_eq!(s.len(), 12);
+            assert!(s
+                .chars()
+                .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit()));
+        }
+    }
+
+    #[test]
+    fn default_session_options_have_sane_shape() {
+        let o = SessionOptions::default();
+        assert!(o.width >= 80);
+        assert!(o.height >= 24);
+        assert!(o.command.is_empty());
+    }
+
+    #[test]
+    fn create_and_drop_cleans_up_socket() {
+        let Some(tmux) = tmux_or_skip() else { return };
+        let opts = SessionOptions {
+            width: 80,
+            height: 24,
+            command: vec!["cat".into()],
+        };
+        let tmux_path = tmux.path().to_path_buf();
+        let (socket, session_name) = {
+            let session = Session::create(tmux, &opts).expect("create session");
+            let socket = session.socket().to_string();
+            let name = session.name().to_string();
+
+            // has-session should succeed while the session is alive.
+            let out = session
+                .tmux_cmd(&["has-session", "-t", &name])
+                .expect("has-session");
+            assert!(out.status.success());
+
+            (socket, name)
+        };
+
+        // After Drop, the server should be gone; has-session against the
+        // old socket/session must not succeed.
+        let out = Command::new(&tmux_path)
+            .args(["-L", &socket, "has-session", "-t", &session_name])
+            .output()
+            .expect("has-session post-drop");
+        assert!(
+            !out.status.success(),
+            "session {session_name} on socket {socket} still alive after Drop",
+        );
+    }
+
+    #[test]
+    fn preserve_prevents_drop_cleanup() {
+        let Some(tmux) = tmux_or_skip() else { return };
+        let opts = SessionOptions {
+            width: 80,
+            height: 24,
+            command: vec!["cat".into()],
+        };
+        let tmux_path = tmux.path().to_path_buf();
+        let (socket, session_name) = {
+            let mut session = Session::create(tmux, &opts).expect("create session");
+            session.preserve();
+            (session.socket().to_string(), session.name().to_string())
+        };
+
+        // After Drop with preserve(), has-session should still succeed.
+        let out = Command::new(&tmux_path)
+            .args(["-L", &socket, "has-session", "-t", &session_name])
+            .output()
+            .expect("has-session post-drop");
+        assert!(
+            out.status.success(),
+            "preserve() did not keep session {session_name} alive",
+        );
+
+        // Clean up manually so we don't leak a server.
+        let _ = Command::new(&tmux_path)
+            .args(["-L", &socket, "kill-server"])
+            .output();
+    }
+
+    #[test]
+    fn reconnect_command_contains_all_required_parts() {
+        let Some(tmux) = tmux_or_skip() else { return };
+        let opts = SessionOptions {
+            width: 80,
+            height: 24,
+            command: vec!["cat".into()],
+        };
+        let session = Session::create(tmux, &opts).expect("create session");
+        let cmd = session.reconnect_command();
+        assert!(cmd.contains("-L "));
+        assert!(cmd.contains(session.socket()));
+        assert!(cmd.contains("attach"));
+        assert!(cmd.contains(session.name()));
+    }
+}
