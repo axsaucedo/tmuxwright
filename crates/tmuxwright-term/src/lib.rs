@@ -8,5 +8,7 @@
 //! Implementation lands incrementally per `plan.md` workstream C.
 
 pub mod grid;
+pub mod hash;
 
 pub use grid::{Attrs, Cell, Color, Grid, Parser};
+pub use hash::{hash_grid, ScreenHash};
