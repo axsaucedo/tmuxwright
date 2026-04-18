@@ -303,6 +303,10 @@ version = "0.0.0"
 [[package]]
 name = "tmuxwright-rpc"
 version = "0.0.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
 
 [[package]]
 name = "tmuxwright-term"

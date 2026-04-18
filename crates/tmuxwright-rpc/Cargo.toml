@@ -12,3 +12,5 @@ description = "Tmuxwright adapter RPC: JSON-RPC 2.0 types, framing, stdio and Un
 workspace = true
 
 [dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
