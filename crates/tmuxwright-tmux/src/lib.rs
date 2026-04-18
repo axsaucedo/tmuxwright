@@ -6,10 +6,14 @@
 //!
 //! Implementation lands incrementally per `plan.md` workstream B.
 
+pub mod capture;
 pub mod detect;
 pub mod input;
 pub mod session;
 
+pub use capture::{
+    capture_visible_plain, capture_with_scrollback_ansi, pane_geometry, PaneGeometry,
+};
 pub use detect::{
     detect, detect_at, parse_version_banner, DetectError, Tmux, Version, MIN_TMUX_VERSION,
 };
