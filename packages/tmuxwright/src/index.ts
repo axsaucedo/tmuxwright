@@ -12,11 +12,7 @@ export const VERSION = '0.0.0';
 
 export { EngineClient } from './engine.js';
 export type { JsonValue } from './engine.js';
-export {
-  launch,
-  Session,
-  TmuxwrightError,
-} from './session.js';
+export { launch, Session, TmuxwrightError } from './session.js';
 export type {
   LaunchOptions,
   SnapshotResult,

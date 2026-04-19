@@ -8,13 +8,7 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-export type JsonValue =
-  | null
-  | boolean
-  | number
-  | string
-  | JsonValue[]
-  | { [k: string]: JsonValue };
+export type JsonValue = null | boolean | number | string | JsonValue[] | { [k: string]: JsonValue };
 
 interface Pending {
   resolve: (v: JsonValue) => void;
@@ -95,9 +89,7 @@ export class EngineClient {
       return;
     }
     if (parsed.error) {
-      pending.reject(
-        new Error(`engine rpc error ${parsed.error.code}: ${parsed.error.message}`),
-      );
+      pending.reject(new Error(`engine rpc error ${parsed.error.code}: ${parsed.error.message}`));
       return;
     }
     pending.resolve(parsed.result ?? null);

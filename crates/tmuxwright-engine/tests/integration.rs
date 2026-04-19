@@ -37,7 +37,12 @@ impl Driver {
             .expect("spawn engine");
         let stdin = child.stdin.take().unwrap();
         let stdout = BufReader::new(child.stdout.take().unwrap());
-        Self { child, stdin, stdout, next_id: 0 }
+        Self {
+            child,
+            stdin,
+            stdout,
+            next_id: 0,
+        }
     }
 
     fn call(&mut self, method: &str, params: Value) -> Value {
@@ -105,7 +110,10 @@ fn full_lifecycle_against_real_tmux() {
         }),
     );
     let sid = launch["result"]["session_id"].as_str().unwrap().to_string();
-    assert!(launch["result"]["reconnect"].as_str().unwrap().contains("attach"));
+    assert!(launch["result"]["reconnect"]
+        .as_str()
+        .unwrap()
+        .contains("attach"));
 
     std::thread::sleep(Duration::from_millis(300));
 
@@ -121,7 +129,10 @@ fn full_lifecycle_against_real_tmux() {
     assert!(snap["result"]["width"].as_u64().unwrap() == 80);
     assert!(snap["result"]["height"].as_u64().unwrap() >= 20);
     assert_eq!(snap["result"]["hash"].as_str().unwrap().len(), 64);
-    assert!(snap["result"]["text"].as_str().unwrap().contains("integration-ok"));
+    assert!(snap["result"]["text"]
+        .as_str()
+        .unwrap()
+        .contains("integration-ok"));
 
     let hit = d.call(
         "engine.assert_text",
@@ -135,7 +146,10 @@ fn full_lifecycle_against_real_tmux() {
     assert_eq!(miss["result"]["matched"], false);
 
     let preserve = d.call("engine.preserve", json!({"session_id": sid}));
-    assert!(preserve["result"]["reconnect"].as_str().unwrap().contains("attach"));
+    assert!(preserve["result"]["reconnect"]
+        .as_str()
+        .unwrap()
+        .contains("attach"));
 
     d.call("engine.close", json!({"session_id": sid}));
     d.shutdown();
