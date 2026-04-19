@@ -39,8 +39,7 @@ fn main() {
     let alive = Command::new(tmux.path())
         .args(["-L", &socket, "has-session", "-t", &session_name])
         .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false);
+        .is_ok_and(|o| o.status.success());
     println!("server alive after drop: {alive}");
     assert!(alive, "preserve() should keep the server running past Drop");
 
@@ -53,8 +52,7 @@ fn main() {
     let alive_after_kill = Command::new(tmux.path())
         .args(["-L", &socket, "has-session", "-t", &session_name])
         .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false);
+        .is_ok_and(|o| o.status.success());
     println!("server alive after manual kill: {alive_after_kill}");
     assert!(!alive_after_kill, "kill-server must remove the session");
 
