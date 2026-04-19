@@ -412,8 +412,7 @@ mod b5_tests {
         let post = Command::new(&path)
             .args(["-L", &socket, "has-session", "-t", &name])
             .output()
-            .map(|o| o.status.success())
-            .unwrap_or(false);
+            .is_ok_and(|o| o.status.success());
         assert!(!post, "Drop(kill_on_drop=true) must kill the server");
     }
 
@@ -441,8 +440,7 @@ mod b5_tests {
         let alive = Command::new(&path)
             .args(["-L", &socket, "has-session", "-t", &name])
             .output()
-            .map(|o| o.status.success())
-            .unwrap_or(false);
+            .is_ok_and(|o| o.status.success());
         assert!(alive, "preserve() must keep server running");
         // cleanup so we don't leak a server between test runs
         let _ = Command::new(&path)
