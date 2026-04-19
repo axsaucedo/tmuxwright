@@ -88,10 +88,10 @@ export class Session {
   }
 
   async assertText(contains: string): Promise<AssertTextResult> {
-    const raw = await this.engine.call<{ matched: boolean; region?: [number, number, number, number] }>(
-      'engine.assert_text',
-      { session_id: this.sessionId, contains },
-    );
+    const raw = await this.engine.call<{
+      matched: boolean;
+      region?: [number, number, number, number];
+    }>('engine.assert_text', { session_id: this.sessionId, contains });
     if (raw.matched && raw.region) {
       const [x, y, width, height] = raw.region;
       return { matched: true, region: { x, y, width, height } };
@@ -147,14 +147,7 @@ export async function launch(opts: LaunchOptions): Promise<Session> {
     width: opts.width ?? 120,
     height: opts.height ?? 40,
   });
-  return new Session(
-    res.session_id,
-    res.socket,
-    res.pane_id,
-    res.reconnect,
-    engine,
-    ownsEngine,
-  );
+  return new Session(res.session_id, res.socket, res.pane_id, res.reconnect, engine, ownsEngine);
 }
 
 export type { JsonValue };
