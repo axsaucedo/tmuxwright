@@ -1,0 +1,28 @@
+[package]
+name = "tmuxwright-engine"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Tmuxwright engine daemon: JSON-RPC 2.0 bridge over stdio that drives tmux + core for any client (TS SDK, other languages)."
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "tmuxwright-engine"
+path = "src/main.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tmuxwright-core = { path = "../tmuxwright-core" }
+tmuxwright-term = { path = "../tmuxwright-term" }
+tmuxwright-tmux = { path = "../tmuxwright-tmux" }
+tmuxwright-rpc = { path = "../tmuxwright-rpc" }
+
+[dev-dependencies]
+serde_json = "1"
+tmuxwright-tmux = { path = "../tmuxwright-tmux" }

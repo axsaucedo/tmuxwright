@@ -1,0 +1,28 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/tmuxwright-core",
+    "crates/tmuxwright-engine",
+    "crates/tmuxwright-tmux",
+    "crates/tmuxwright-term",
+    "crates/tmuxwright-rpc",
+    "crates/tmuxwright-adapter-ratatui",
+    "crates/tmuxwright-napi",
+]
+
+[workspace.package]
+version = "0.0.0"
+edition = "2021"
+rust-version = "1.75"
+license = "MIT"
+repository = "https://github.com/asaucedo/tmuxwright"
+authors = ["Tmuxwright contributors"]
+
+[workspace.lints.rust]
+unsafe_code = "warn"
+
+[workspace.lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+module_name_repetitions = "allow"

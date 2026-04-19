@@ -1,0 +1,22 @@
+{
+  "name": "create-tmuxwright",
+  "version": "0.0.0",
+  "description": "Scaffold a new Tmuxwright test project.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "create-tmuxwright": "./dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "rm -rf dist"
+  },
+  "engines": {
+    "node": ">=18.18.0"
+  }
+}

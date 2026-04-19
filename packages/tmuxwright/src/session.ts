@@ -1,0 +1,153 @@
+// High-level session API. Wraps one engine-managed tmux session and
+// mirrors a subset of the Playwright-style surface the plan calls for.
+
+import { EngineClient, JsonValue } from './engine.js';
+
+export interface LaunchOptions {
+  command: string[];
+  width?: number;
+  height?: number;
+  engine?: EngineClient;
+}
+
+export interface SnapshotResult {
+  text: string;
+  hash: string;
+  width: number;
+  height: number;
+}
+
+export interface Region {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface AssertTextResult {
+  matched: boolean;
+  region?: Region;
+}
+
+export interface WaitStableOptions {
+  quietMs?: number;
+  timeoutMs?: number;
+}
+
+export interface WaitStableResult {
+  status: 'stable' | 'timeout';
+  hash: string;
+}
+
+export class TmuxwrightError extends Error {
+  constructor(
+    message: string,
+    public readonly reconnect?: string,
+  ) {
+    super(message);
+    this.name = 'TmuxwrightError';
+  }
+}
+
+export class Session {
+  private closed = false;
+  private readonly ownsEngine: boolean;
+
+  constructor(
+    public readonly sessionId: string,
+    public readonly socket: string,
+    public readonly paneId: string,
+    public readonly reconnect: string,
+    private readonly engine: EngineClient,
+    ownsEngine: boolean,
+  ) {
+    this.ownsEngine = ownsEngine;
+  }
+
+  async sendKeys(keys: string[]): Promise<void> {
+    await this.engine.call('engine.send_keys', { session_id: this.sessionId, keys });
+  }
+
+  async type(text: string): Promise<void> {
+    await this.engine.call('engine.type', { session_id: this.sessionId, text });
+  }
+
+  async snapshot(withScrollback = false): Promise<SnapshotResult> {
+    return this.engine.call<SnapshotResult>('engine.snapshot', {
+      session_id: this.sessionId,
+      with_scrollback: withScrollback,
+    });
+  }
+
+  async waitForStable(opts: WaitStableOptions = {}): Promise<WaitStableResult> {
+    return this.engine.call<WaitStableResult>('engine.wait_stable', {
+      session_id: this.sessionId,
+      quiet_ms: opts.quietMs ?? 250,
+      timeout_ms: opts.timeoutMs ?? 5_000,
+    });
+  }
+
+  async assertText(contains: string): Promise<AssertTextResult> {
+    const raw = await this.engine.call<{
+      matched: boolean;
+      region?: [number, number, number, number];
+    }>('engine.assert_text', { session_id: this.sessionId, contains });
+    if (raw.matched && raw.region) {
+      const [x, y, width, height] = raw.region;
+      return { matched: true, region: { x, y, width, height } };
+    }
+    return { matched: raw.matched };
+  }
+
+  async expectText(contains: string): Promise<Region> {
+    const r = await this.assertText(contains);
+    if (!r.matched) {
+      const snap = await this.snapshot();
+      const preservation = await this.preserve();
+      throw new TmuxwrightError(
+        `expected terminal to contain ${JSON.stringify(contains)}\n--- visible ---\n${snap.text}`,
+        preservation,
+      );
+    }
+    return r.region!;
+  }
+
+  async preserve(): Promise<string> {
+    const r = await this.engine.call<{ reconnect: string }>('engine.preserve', {
+      session_id: this.sessionId,
+    });
+    return r.reconnect;
+  }
+
+  async close(): Promise<void> {
+    if (this.closed) return;
+    this.closed = true;
+    await this.engine.call('engine.close', { session_id: this.sessionId });
+    if (this.ownsEngine) {
+      await this.engine.shutdown();
+    }
+  }
+}
+
+export async function launch(opts: LaunchOptions): Promise<Session> {
+  const ownsEngine = opts.engine === undefined;
+  const engine = opts.engine ?? new EngineClient();
+  // Handshake so we fail fast if the binary is missing / wrong protocol.
+  const h = await engine.call<{ protocol: string }>('engine.handshake');
+  if (h.protocol !== '1') {
+    throw new TmuxwrightError(`unexpected engine protocol: ${h.protocol}`);
+  }
+  const res = await engine.call<{
+    session_id: string;
+    socket: string;
+    pane_id: string;
+    reconnect: string;
+  }>('engine.launch', {
+    command: opts.command,
+    width: opts.width ?? 120,
+    height: opts.height ?? 40,
+  });
+  return new Session(res.session_id, res.socket, res.pane_id, res.reconnect, engine, ownsEngine);
+}
+
+export type { JsonValue };

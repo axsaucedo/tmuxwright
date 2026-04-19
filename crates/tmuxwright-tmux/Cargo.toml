@@ -1,0 +1,17 @@
+[package]
+name = "tmuxwright-tmux"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Tmuxwright tmux control layer: sessions, panes, input injection, capture, preservation-on-failure."
+
+[lints]
+workspace = true
+
+[dependencies]
+thiserror = "1.0"
+which = "6.0"
+rand = "0.8"

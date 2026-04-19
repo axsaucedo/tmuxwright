@@ -1,0 +1,16 @@
+[package]
+name = "tmuxwright-term"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Tmuxwright terminal model: ANSI/VT parsing, grid, stable screen hash, text/region locators."
+
+[lints]
+workspace = true
+
+[dependencies]
+sha2 = "0.10"
+vte = "0.13"

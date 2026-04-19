@@ -1,0 +1,25 @@
+{
+  "name": "tmuxwright",
+  "version": "0.0.0",
+  "description": "Tmuxwright SDK: deterministic E2E testing for terminal software.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "rm -rf dist"
+  },
+  "engines": {
+    "node": ">=18.18.0"
+  }
+}

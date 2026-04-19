@@ -1,0 +1,8 @@
+{
+  "files": [],
+  "references": [
+    { "path": "./packages/tmuxwright" },
+    { "path": "./packages/tmuxwright-test" },
+    { "path": "./packages/create-tmuxwright" }
+  ]
+}
