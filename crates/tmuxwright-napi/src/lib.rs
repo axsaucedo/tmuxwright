@@ -1,7 +1,8 @@
-//! napi-rs bindings for Tmuxwright.
+//! Future napi-rs bindings for Tmuxwright.
 //!
-//! Exposes the engine handle, async actions, trace streams, and error
-//! types to the Node side (`packages/tmuxwright`). Compiled as a
-//! `cdylib` and loaded by the SDK via napi-rs-generated glue.
+//! Terminal-mode v1 uses the `tmuxwright-engine` stdio daemon as the
+//! TypeScript boundary. Native Node bindings are intentionally deferred
+//! until the daemon-backed SDK is stable and there is evidence that
+//! startup or distribution costs justify the added build complexity.
 //!
-//! Implementation lands incrementally per `plan.md` workstream F1.
+//! This crate is not an active workspace member for v1.
