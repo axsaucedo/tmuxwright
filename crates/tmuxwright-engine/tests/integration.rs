@@ -7,7 +7,7 @@
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::PathBuf;
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
-use std::time::Duration;
+use std::{env, fs};
 
 use serde_json::{json, Value};
 use tmuxwright_tmux::detect;
@@ -83,7 +83,6 @@ impl Driver {
 
     fn shutdown(mut self) {
         let _ = self.call("engine.shutdown", json!({}));
-        std::thread::sleep(Duration::from_millis(100));
         let _ = self.child.wait();
     }
 }
@@ -96,6 +95,8 @@ fn full_lifecycle_against_real_tmux() {
     }
 
     let mut d = Driver::spawn();
+    let trace_dir = env::temp_dir().join(format!("tmuxwright-engine-trace-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&trace_dir);
 
     let hs = d.call("engine.handshake", json!({}));
     assert_eq!(hs["result"]["protocol"], "1");
@@ -107,6 +108,7 @@ fn full_lifecycle_against_real_tmux() {
             "command": ["bash", "-lc", "echo integration-ok; sleep 999"],
             "width": 80,
             "height": 24,
+            "trace_dir": trace_dir,
         }),
     );
     let sid = launch["result"]["session_id"].as_str().unwrap().to_string();
@@ -115,7 +117,12 @@ fn full_lifecycle_against_real_tmux() {
         .unwrap()
         .contains("attach"));
 
-    std::thread::sleep(Duration::from_millis(300));
+    let text_wait = d.call(
+        "engine.wait_text",
+        json!({"session_id": sid, "contains": "integration-ok", "timeout_ms": 3000}),
+    );
+    assert_eq!(text_wait["result"]["status"], "found");
+    assert_eq!(text_wait["result"]["matched"], true);
 
     let wait = d.call(
         "engine.wait_stable",
@@ -133,6 +140,12 @@ fn full_lifecycle_against_real_tmux() {
         .as_str()
         .unwrap()
         .contains("integration-ok"));
+    let hash = snap["result"]["hash"].as_str().unwrap();
+    let hash_wait = d.call(
+        "engine.wait_hash",
+        json!({"session_id": sid, "hash": hash, "timeout_ms": 1000}),
+    );
+    assert_eq!(hash_wait["result"]["status"], "found");
 
     let hit = d.call(
         "engine.assert_text",
@@ -144,6 +157,17 @@ fn full_lifecycle_against_real_tmux() {
         json!({"session_id": sid, "contains": "will-never-appear-xyz"}),
     );
     assert_eq!(miss["result"]["matched"], false);
+    let text_timeout = d.call(
+        "engine.wait_text",
+        json!({"session_id": sid, "contains": "will-never-appear-xyz", "timeout_ms": 100}),
+    );
+    assert_eq!(text_timeout["result"]["status"], "timeout");
+
+    let trace = d.call("engine.trace", json!({"session_id": sid}));
+    let trace_path = trace["result"]["trace_path"].as_str().unwrap();
+    let trace_body = fs::read_to_string(trace_path).unwrap();
+    assert!(trace_body.contains("\"kind\":\"wait\""), "{trace_body}");
+    assert!(trace_body.contains("\"kind\":\"assert\""), "{trace_body}");
 
     let preserve = d.call("engine.preserve", json!({"session_id": sid}));
     assert!(preserve["result"]["reconnect"]
@@ -153,6 +177,7 @@ fn full_lifecycle_against_real_tmux() {
 
     d.call("engine.close", json!({"session_id": sid}));
     d.shutdown();
+    let _ = fs::remove_dir_all(trace_dir);
 }
 
 #[test]

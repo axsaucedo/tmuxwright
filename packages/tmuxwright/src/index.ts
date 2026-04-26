@@ -18,6 +18,11 @@ export type {
   SnapshotResult,
   WaitStableOptions,
   WaitStableResult,
+  WaitTextOptions,
+  WaitTextResult,
+  WaitHashOptions,
+  WaitHashResult,
+  TraceResult,
   AssertTextResult,
   Region,
 } from './session.js';

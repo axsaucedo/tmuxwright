@@ -7,6 +7,7 @@ export interface LaunchOptions {
   command: string[];
   width?: number;
   height?: number;
+  traceDir?: string;
   engine?: EngineClient;
 }
 
@@ -39,6 +40,31 @@ export interface WaitStableResult {
   hash: string;
 }
 
+export interface WaitTextOptions {
+  timeoutMs?: number;
+}
+
+export interface WaitTextResult {
+  status: 'found' | 'timeout';
+  matched: boolean;
+  hash: string;
+  region?: Region;
+}
+
+export interface WaitHashOptions {
+  timeoutMs?: number;
+}
+
+export interface WaitHashResult {
+  status: 'found' | 'timeout';
+  hash: string;
+}
+
+export interface TraceResult {
+  traceDir?: string;
+  tracePath?: string;
+}
+
 export class TmuxwrightError extends Error {
   constructor(
     message: string,
@@ -58,6 +84,7 @@ export class Session {
     public readonly socket: string,
     public readonly paneId: string,
     public readonly reconnect: string,
+    public readonly traceDir: string | undefined,
     private readonly engine: EngineClient,
     ownsEngine: boolean,
   ) {
@@ -87,6 +114,32 @@ export class Session {
     });
   }
 
+  async waitForText(contains: string, opts: WaitTextOptions = {}): Promise<WaitTextResult> {
+    const raw = await this.engine.call<{
+      status: 'found' | 'timeout';
+      matched: boolean;
+      hash: string;
+      region?: [number, number, number, number];
+    }>('engine.wait_text', {
+      session_id: this.sessionId,
+      contains,
+      timeout_ms: opts.timeoutMs ?? 5_000,
+    });
+    if (raw.matched && raw.region) {
+      const [x, y, width, height] = raw.region;
+      return { status: raw.status, matched: true, hash: raw.hash, region: { x, y, width, height } };
+    }
+    return { status: raw.status, matched: raw.matched, hash: raw.hash };
+  }
+
+  async waitForHash(hash: string, opts: WaitHashOptions = {}): Promise<WaitHashResult> {
+    return this.engine.call<WaitHashResult>('engine.wait_hash', {
+      session_id: this.sessionId,
+      hash,
+      timeout_ms: opts.timeoutMs ?? 5_000,
+    });
+  }
+
   async assertText(contains: string): Promise<AssertTextResult> {
     const raw = await this.engine.call<{
       matched: boolean;
@@ -99,8 +152,8 @@ export class Session {
     return { matched: raw.matched };
   }
 
-  async expectText(contains: string): Promise<Region> {
-    const r = await this.assertText(contains);
+  async expectText(contains: string, opts: WaitTextOptions = {}): Promise<Region> {
+    const r = await this.waitForText(contains, opts);
     if (!r.matched) {
       const snap = await this.snapshot();
       const preservation = await this.preserve();
@@ -117,6 +170,13 @@ export class Session {
       session_id: this.sessionId,
     });
     return r.reconnect;
+  }
+
+  async trace(): Promise<TraceResult> {
+    const r = await this.engine.call<{ trace_dir?: string; trace_path?: string }>('engine.trace', {
+      session_id: this.sessionId,
+    });
+    return { traceDir: r.trace_dir, tracePath: r.trace_path };
   }
 
   async close(): Promise<void> {
@@ -142,12 +202,22 @@ export async function launch(opts: LaunchOptions): Promise<Session> {
     socket: string;
     pane_id: string;
     reconnect: string;
+    trace_dir?: string;
   }>('engine.launch', {
     command: opts.command,
     width: opts.width ?? 120,
     height: opts.height ?? 40,
+    trace_dir: opts.traceDir ?? null,
   });
-  return new Session(res.session_id, res.socket, res.pane_id, res.reconnect, engine, ownsEngine);
+  return new Session(
+    res.session_id,
+    res.socket,
+    res.pane_id,
+    res.reconnect,
+    res.trace_dir,
+    engine,
+    ownsEngine,
+  );
 }
 
 export type { JsonValue };

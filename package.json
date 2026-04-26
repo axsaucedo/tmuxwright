@@ -12,6 +12,7 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
+    "test": "cargo build -p tmuxwright-engine && pnpm -r --filter tmuxwright --filter tmuxwright-test build && node --test packages/tmuxwright-test/tests/*.test.mjs",
     "typecheck": "tsc -b"
   },
   "devDependencies": {
