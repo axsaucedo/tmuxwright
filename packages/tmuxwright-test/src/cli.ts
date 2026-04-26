@@ -52,6 +52,7 @@ async function main(): Promise<void> {
         console.log(`  ✗ ${r.name} (${r.durationMs}ms)`);
         if (r.error) console.log(`      ${r.error.message.split('\n').join('\n      ')}`);
         if (r.reconnect) console.log(`      reconnect: ${r.reconnect}`);
+        if (r.tracePath) console.log(`      trace: ${r.tracePath}`);
       }
     }
   }
