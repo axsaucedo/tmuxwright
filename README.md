@@ -36,6 +36,48 @@
 - macOS and Linux. Windows is out of scope for v1.
 - Requires a recent `tmux` (target: 3.3+).
 
+## Current API shape
+
+The SDK launches commands through the Rust engine daemon:
+
+```ts
+import { launch } from 'tmuxwright';
+
+const app = await launch({
+  command: ['bash', '-lc', 'echo hello; sleep 5'],
+  traceDir: 'tmp/traces/hello',
+});
+
+await app.waitForText('hello');
+await app.expectText('hello');
+console.log(await app.snapshot());
+console.log(await app.trace());
+await app.close();
+```
+
+The runner provides the same surface through a tiny fixture:
+
+```js
+import { test, expect } from 'tmuxwright-test';
+
+test('prints hello', async ({ tmw }) => {
+  const app = await tmw.launch({
+    command: ['bash', '-lc', 'echo hello; sleep 5'],
+  });
+  await expect(app).toContain('hello');
+});
+```
+
+Run compiled `*.tmw.js` / `*.tmw.mjs` tests with:
+
+```sh
+tmuxwright-test path/to/tests
+```
+
+During local development the SDK resolves `target/debug/tmuxwright-engine`
+by default. Set `TMUXWRIGHT_ENGINE_BIN=/path/to/tmuxwright-engine` to use a
+specific binary.
+
 ## Repository layout
 
 ```
@@ -50,10 +92,38 @@ packages/
   tmuxwright-test/      minimal test runner
 ```
 
+## Architecture
+
+- `tmuxwright-tmux` owns the tmux server/socket/session lifecycle, input
+  injection, capture, geometry, resize, and reconnect metadata.
+- `tmuxwright-term` turns captured terminal state into a deterministic grid,
+  hashes, locators, and stability checks.
+- `tmuxwright-engine` is the product boundary: a local JSON-RPC daemon that
+  combines tmux control, terminal parsing, waits, assertions, traces, and
+  cleanup.
+- `packages/tmuxwright` is the TypeScript SDK that spawns the daemon and
+  exposes sessions to user tests.
+- `packages/tmuxwright-test` is the minimal serial runner that discovers
+  `*.tmw.js` / `*.tmw.mjs` files and preserves failing sessions.
+
 Future or experimental surfaces such as `tmuxwright-napi`,
-`tmuxwright-adapter-ratatui`, `create-tmuxwright`, rich reporters, the
-HTML trace viewer, and framework adapters are intentionally deferred
-until terminal-mode v1 is coherent.
+`tmuxwright-adapter-ratatui`, `create-tmuxwright`, rich reporters, the HTML
+trace viewer, and framework adapters are intentionally deferred until
+terminal-mode v1 is coherent.
+
+## Validation
+
+Local validation mirrors CI:
+
+```sh
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace --all-targets
+pnpm format:check
+pnpm lint
+pnpm typecheck
+pnpm test
+```
 
 ## Contributing
 
