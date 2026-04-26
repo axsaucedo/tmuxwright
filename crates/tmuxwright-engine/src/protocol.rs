@@ -11,6 +11,8 @@ pub mod method {
     pub const TYPE: &str = "engine.type";
     pub const SNAPSHOT: &str = "engine.snapshot";
     pub const WAIT_STABLE: &str = "engine.wait_stable";
+    pub const WAIT_TEXT: &str = "engine.wait_text";
+    pub const WAIT_HASH: &str = "engine.wait_hash";
     pub const ASSERT_TEXT: &str = "engine.assert_text";
     pub const PRESERVE: &str = "engine.preserve";
     pub const CLOSE: &str = "engine.close";
@@ -85,6 +87,37 @@ fn default_timeout() -> u64 {
 
 #[derive(Debug, Serialize)]
 pub struct WaitStableResult {
+    pub status: &'static str,
+    pub hash: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct WaitTextParams {
+    pub session_id: String,
+    pub contains: String,
+    #[serde(default = "default_timeout")]
+    pub timeout_ms: u64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct WaitTextResult {
+    pub status: &'static str,
+    pub matched: bool,
+    pub hash: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub region: Option<[u16; 4]>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct WaitHashParams {
+    pub session_id: String,
+    pub hash: String,
+    #[serde(default = "default_timeout")]
+    pub timeout_ms: u64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct WaitHashResult {
     pub status: &'static str,
     pub hash: String,
 }
