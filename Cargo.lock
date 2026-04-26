@@ -284,10 +284,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "tmuxwright-adapter-ratatui"
-version = "0.0.0"
-
-[[package]]
 name = "tmuxwright-core"
 version = "0.0.0"
 dependencies = [
@@ -307,10 +303,6 @@ dependencies = [
  "tmuxwright-term",
  "tmuxwright-tmux",
 ]
-
-[[package]]
-name = "tmuxwright-napi"
-version = "0.0.0"
 
 [[package]]
 name = "tmuxwright-rpc"
