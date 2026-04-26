@@ -7,6 +7,7 @@
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::PathBuf;
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
+use std::{env, fs};
 
 use serde_json::{json, Value};
 use tmuxwright_tmux::detect;
@@ -94,6 +95,8 @@ fn full_lifecycle_against_real_tmux() {
     }
 
     let mut d = Driver::spawn();
+    let trace_dir = env::temp_dir().join(format!("tmuxwright-engine-trace-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&trace_dir);
 
     let hs = d.call("engine.handshake", json!({}));
     assert_eq!(hs["result"]["protocol"], "1");
@@ -105,6 +108,7 @@ fn full_lifecycle_against_real_tmux() {
             "command": ["bash", "-lc", "echo integration-ok; sleep 999"],
             "width": 80,
             "height": 24,
+            "trace_dir": trace_dir,
         }),
     );
     let sid = launch["result"]["session_id"].as_str().unwrap().to_string();
@@ -159,6 +163,12 @@ fn full_lifecycle_against_real_tmux() {
     );
     assert_eq!(text_timeout["result"]["status"], "timeout");
 
+    let trace = d.call("engine.trace", json!({"session_id": sid}));
+    let trace_path = trace["result"]["trace_path"].as_str().unwrap();
+    let trace_body = fs::read_to_string(trace_path).unwrap();
+    assert!(trace_body.contains("\"kind\":\"wait\""), "{trace_body}");
+    assert!(trace_body.contains("\"kind\":\"assert\""), "{trace_body}");
+
     let preserve = d.call("engine.preserve", json!({"session_id": sid}));
     assert!(preserve["result"]["reconnect"]
         .as_str()
@@ -167,6 +177,7 @@ fn full_lifecycle_against_real_tmux() {
 
     d.call("engine.close", json!({"session_id": sid}));
     d.shutdown();
+    let _ = fs::remove_dir_all(trace_dir);
 }
 
 #[test]
