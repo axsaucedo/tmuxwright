@@ -7,7 +7,6 @@
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::PathBuf;
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
-use std::time::Duration;
 
 use serde_json::{json, Value};
 use tmuxwright_tmux::detect;
@@ -83,7 +82,6 @@ impl Driver {
 
     fn shutdown(mut self) {
         let _ = self.call("engine.shutdown", json!({}));
-        std::thread::sleep(Duration::from_millis(100));
         let _ = self.child.wait();
     }
 }
@@ -115,7 +113,12 @@ fn full_lifecycle_against_real_tmux() {
         .unwrap()
         .contains("attach"));
 
-    std::thread::sleep(Duration::from_millis(300));
+    let text_wait = d.call(
+        "engine.wait_text",
+        json!({"session_id": sid, "contains": "integration-ok", "timeout_ms": 3000}),
+    );
+    assert_eq!(text_wait["result"]["status"], "found");
+    assert_eq!(text_wait["result"]["matched"], true);
 
     let wait = d.call(
         "engine.wait_stable",
@@ -133,6 +136,12 @@ fn full_lifecycle_against_real_tmux() {
         .as_str()
         .unwrap()
         .contains("integration-ok"));
+    let hash = snap["result"]["hash"].as_str().unwrap();
+    let hash_wait = d.call(
+        "engine.wait_hash",
+        json!({"session_id": sid, "hash": hash, "timeout_ms": 1000}),
+    );
+    assert_eq!(hash_wait["result"]["status"], "found");
 
     let hit = d.call(
         "engine.assert_text",
@@ -144,6 +153,11 @@ fn full_lifecycle_against_real_tmux() {
         json!({"session_id": sid, "contains": "will-never-appear-xyz"}),
     );
     assert_eq!(miss["result"]["matched"], false);
+    let text_timeout = d.call(
+        "engine.wait_text",
+        json!({"session_id": sid, "contains": "will-never-appear-xyz", "timeout_ms": 100}),
+    );
+    assert_eq!(text_timeout["result"]["status"], "timeout");
 
     let preserve = d.call("engine.preserve", json!({"session_id": sid}));
     assert!(preserve["result"]["reconnect"]
