@@ -15,6 +15,7 @@ pub mod method {
     pub const WAIT_HASH: &str = "engine.wait_hash";
     pub const ASSERT_TEXT: &str = "engine.assert_text";
     pub const PRESERVE: &str = "engine.preserve";
+    pub const TRACE: &str = "engine.trace";
     pub const CLOSE: &str = "engine.close";
     pub const SHUTDOWN: &str = "engine.shutdown";
 }
@@ -26,6 +27,8 @@ pub struct LaunchParams {
     pub width: Option<u16>,
     #[serde(default)]
     pub height: Option<u16>,
+    #[serde(default)]
+    pub trace_dir: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -34,6 +37,8 @@ pub struct LaunchResult {
     pub socket: String,
     pub pane_id: String,
     pub reconnect: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub trace_dir: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -138,4 +143,12 @@ pub struct AssertTextResult {
 #[derive(Debug, Serialize)]
 pub struct PreserveResult {
     pub reconnect: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct TraceResult {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub trace_dir: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub trace_path: Option<String>,
 }
