@@ -3,7 +3,10 @@
 #![allow(clippy::needless_pass_by_value)]
 
 use serde_json::Value;
+use std::path::PathBuf;
+use std::time::Instant;
 use tmuxwright_core::snapshot::Snapshot;
+use tmuxwright_core::Action;
 use tmuxwright_rpc::server::Handler;
 use tmuxwright_rpc::RpcError;
 use tmuxwright_tmux::capture::{
@@ -17,8 +20,8 @@ use crate::assertions;
 use crate::errors::{internal, internal_display, invalid_params, parse};
 use crate::protocol::{
     method, AssertTextParams, LaunchParams, LaunchResult, PreserveResult, SendKeysParams,
-    SessionIdParams, SnapshotParams, SnapshotResult, TypeParams, WaitHashParams, WaitStableParams,
-    WaitTextParams, ENGINE_PROTOCOL,
+    SessionIdParams, SnapshotParams, SnapshotResult, TraceResult, TypeParams, WaitHashParams,
+    WaitStableParams, WaitTextParams, ENGINE_PROTOCOL,
 };
 use crate::session_store::SessionStore;
 use crate::waits;
@@ -71,6 +74,7 @@ impl Handler for Engine {
             method::WAIT_HASH => self.wait_hash(parse(params)?),
             method::ASSERT_TEXT => self.assert_text(parse(params)?),
             method::PRESERVE => self.preserve(parse(params)?),
+            method::TRACE => self.trace(parse(params)?),
             method::CLOSE => Ok(self.close(parse(params)?)),
             method::SHUTDOWN => {
                 self.stop = true;
@@ -100,13 +104,15 @@ impl Engine {
             command: p.command,
         };
         let session = Session::create(tmux, &opts).map_err(internal)?;
+        let trace_dir = p.trace_dir.map(PathBuf::from);
         let out = LaunchResult {
             session_id: String::new(),
             socket: session.socket().to_string(),
             pane_id: session.pane_id().to_string(),
             reconnect: session.reconnect_command(),
+            trace_dir: trace_dir.as_ref().map(|path| path.display().to_string()),
         };
-        let id = self.sessions.insert(session);
+        let id = self.sessions.insert(session, trace_dir);
         Ok(serde_json::to_value(LaunchResult {
             session_id: id,
             ..out
@@ -115,15 +121,32 @@ impl Engine {
     }
 
     fn send_keys(&mut self, p: SendKeysParams) -> Result<Value, RpcError> {
-        let s = self.sessions.get_mut(&p.session_id)?;
-        let keys: Vec<Key> = p.keys.into_iter().map(Key).collect();
-        tmux_send_keys(s, &keys).map_err(internal)?;
+        let before = self.do_snapshot(&p.session_id, false)?;
+        let action_label = format!("keys:{:?}", p.keys);
+        {
+            let s = self.sessions.get_mut(&p.session_id)?;
+            let keys: Vec<Key> = p.keys.into_iter().map(Key).collect();
+            tmux_send_keys(s, &keys).map_err(internal)?;
+        }
+        let after = self.do_snapshot(&p.session_id, false)?;
+        self.sessions.record_action(
+            &p.session_id,
+            &Action::Type(action_label),
+            Some(&before),
+            &after,
+        )?;
         Ok(serde_json::json!({}))
     }
 
     fn type_text(&mut self, p: TypeParams) -> Result<Value, RpcError> {
-        let s = self.sessions.get_mut(&p.session_id)?;
-        type_text(s, &p.text).map_err(internal)?;
+        let before = self.do_snapshot(&p.session_id, false)?;
+        {
+            let s = self.sessions.get_mut(&p.session_id)?;
+            type_text(s, &p.text).map_err(internal)?;
+        }
+        let after = self.do_snapshot(&p.session_id, false)?;
+        self.sessions
+            .record_action(&p.session_id, &Action::Type(p.text), Some(&before), &after)?;
         Ok(serde_json::json!({}))
     }
 
@@ -139,29 +162,60 @@ impl Engine {
     }
 
     fn wait_stable(&mut self, p: WaitStableParams) -> Result<Value, RpcError> {
+        let started = Instant::now();
         let result = waits::wait_stable(p.timeout_ms, p.quiet_ms, || {
             self.do_snapshot(&p.session_id, false)
         })?;
+        self.sessions.record_wait(
+            &p.session_id,
+            "stable",
+            result.status,
+            started.elapsed(),
+            &result.hash,
+        )?;
         Ok(serde_json::to_value(result).unwrap())
     }
 
     fn wait_text(&mut self, p: WaitTextParams) -> Result<Value, RpcError> {
+        let started = Instant::now();
         let result = waits::wait_text(&p.contains, p.timeout_ms, || {
             self.do_snapshot(&p.session_id, false)
         })?;
+        self.sessions.record_wait(
+            &p.session_id,
+            &format!("text:{}", p.contains),
+            result.status,
+            started.elapsed(),
+            &result.hash,
+        )?;
         Ok(serde_json::to_value(result).unwrap())
     }
 
     fn wait_hash(&mut self, p: WaitHashParams) -> Result<Value, RpcError> {
+        let started = Instant::now();
         let result = waits::wait_hash(&p.hash, p.timeout_ms, || {
             self.do_snapshot(&p.session_id, false)
         })?;
+        self.sessions.record_wait(
+            &p.session_id,
+            &format!("hash:{}", p.hash),
+            result.status,
+            started.elapsed(),
+            &result.hash,
+        )?;
         Ok(serde_json::to_value(result).unwrap())
     }
 
     fn assert_text(&mut self, p: AssertTextParams) -> Result<Value, RpcError> {
         let snap = self.do_snapshot(&p.session_id, false)?;
-        Ok(serde_json::to_value(assertions::assert_text(&snap, &p.contains)).unwrap())
+        let result = assertions::assert_text(&snap, &p.contains);
+        self.sessions.record_assert(
+            &p.session_id,
+            &format!("contains:{}", p.contains),
+            result.matched,
+            &snap,
+        )?;
+        Ok(serde_json::to_value(result).unwrap())
     }
 
     fn preserve(&mut self, p: SessionIdParams) -> Result<Value, RpcError> {
@@ -169,6 +223,18 @@ impl Engine {
         s.preserve();
         Ok(serde_json::to_value(PreserveResult {
             reconnect: s.reconnect_command(),
+        })
+        .unwrap())
+    }
+
+    fn trace(&mut self, p: SessionIdParams) -> Result<Value, RpcError> {
+        let trace_path = self
+            .sessions
+            .persist_trace(&p.session_id)?
+            .map(|path| path.display().to_string());
+        Ok(serde_json::to_value(TraceResult {
+            trace_dir: self.sessions.trace_dir(&p.session_id)?,
+            trace_path,
         })
         .unwrap())
     }
