@@ -17,7 +17,8 @@ use crate::assertions;
 use crate::errors::{internal, internal_display, invalid_params, parse};
 use crate::protocol::{
     method, AssertTextParams, LaunchParams, LaunchResult, PreserveResult, SendKeysParams,
-    SessionIdParams, SnapshotParams, SnapshotResult, TypeParams, WaitStableParams, ENGINE_PROTOCOL,
+    SessionIdParams, SnapshotParams, SnapshotResult, TypeParams, WaitHashParams, WaitStableParams,
+    WaitTextParams, ENGINE_PROTOCOL,
 };
 use crate::session_store::SessionStore;
 use crate::waits;
@@ -66,6 +67,8 @@ impl Handler for Engine {
             method::TYPE => self.type_text(parse(params)?),
             method::SNAPSHOT => self.snapshot(parse(params)?),
             method::WAIT_STABLE => self.wait_stable(parse(params)?),
+            method::WAIT_TEXT => self.wait_text(parse(params)?),
+            method::WAIT_HASH => self.wait_hash(parse(params)?),
             method::ASSERT_TEXT => self.assert_text(parse(params)?),
             method::PRESERVE => self.preserve(parse(params)?),
             method::CLOSE => Ok(self.close(parse(params)?)),
@@ -137,6 +140,20 @@ impl Engine {
 
     fn wait_stable(&mut self, p: WaitStableParams) -> Result<Value, RpcError> {
         let result = waits::wait_stable(p.timeout_ms, p.quiet_ms, || {
+            self.do_snapshot(&p.session_id, false)
+        })?;
+        Ok(serde_json::to_value(result).unwrap())
+    }
+
+    fn wait_text(&mut self, p: WaitTextParams) -> Result<Value, RpcError> {
+        let result = waits::wait_text(&p.contains, p.timeout_ms, || {
+            self.do_snapshot(&p.session_id, false)
+        })?;
+        Ok(serde_json::to_value(result).unwrap())
+    }
+
+    fn wait_hash(&mut self, p: WaitHashParams) -> Result<Value, RpcError> {
+        let result = waits::wait_hash(&p.hash, p.timeout_ms, || {
             self.do_snapshot(&p.session_id, false)
         })?;
         Ok(serde_json::to_value(result).unwrap())
