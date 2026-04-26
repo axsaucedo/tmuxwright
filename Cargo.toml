@@ -6,8 +6,6 @@ members = [
     "crates/tmuxwright-tmux",
     "crates/tmuxwright-term",
     "crates/tmuxwright-rpc",
-    "crates/tmuxwright-adapter-ratatui",
-    "crates/tmuxwright-napi",
 ]
 
 [workspace.package]

@@ -1,8 +1,8 @@
-//! Ratatui adapter for Tmuxwright.
+//! Future Ratatui adapter for Tmuxwright.
 //!
-//! In-process helper that integrates with Ratatui's `TestBackend` for
-//! integration-oriented rendering tests and provides explicit semantic
-//! region registration so the unified Tmuxwright API can resolve
-//! locators by role/name when the application opts in.
+//! Terminal-mode v1 is focused on black-box tmux testing. Framework
+//! adapters, including a Ratatui integration built around `TestBackend`
+//! and explicit semantic regions, are intentionally deferred until the
+//! daemon, SDK, runner, trace, and acceptance-test surfaces are stable.
 //!
-//! Implementation lands incrementally per `plan.md` workstream H3.
+//! This crate is not an active workspace member for v1.
