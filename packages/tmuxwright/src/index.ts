@@ -22,6 +22,7 @@ export type {
   WaitTextResult,
   WaitHashOptions,
   WaitHashResult,
+  TraceResult,
   AssertTextResult,
   Region,
 } from './session.js';
